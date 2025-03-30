@@ -1,0 +1,10 @@
+name: home
+title:
+username: isss608-weatherpulse
+account: isss608-weatherpulse
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14376099
+bundleId: 10025992
+url: https://isss608-weatherpulse.shinyapps.io/home/
+version: 1
