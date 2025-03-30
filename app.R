@@ -12,6 +12,10 @@ library(fable)
 library(gridExtra)
 library(magrittr)
 library(kableExtra)
+library(shinyjs)
+library(forecast)  
+library(stats)
+library(urca)
 
 
 # Load datasets
@@ -792,7 +796,165 @@ create_forecast <- function(dataset_type,
 }
 
 
-
+# Multiple Time Series Forecasting
+create_station_comparison <- function(dataset_type,
+                                      selected_stations,
+                                      selected_var,
+                                      selected_model,
+                                      training_start = "2020-01-01",
+                                      training_end = "2023-12-31",
+                                      holdout_end = "2024-12-31") {
+  
+  var_mapping <- list(
+    "rainfall" = list(
+      "Total Rainfall" = "Daily Rainfall Total (mm)",
+      "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall (mm)",
+      "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall (mm)",
+      "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall (mm)"
+    ),
+    "temperature" = list(
+      "Mean Temperature" = "Mean Temperature (°C)",
+      "Maximum Temperature" = "Maximum Temperature (°C)",
+      "Minimum Temperature" = "Minimum Temperature (°C)"
+    ),
+    "windspeed" = list(
+      "Mean Wind Speed" = "Mean Wind Speed (km/h)",
+      "Max Wind Speed" = "Max Wind Speed (km/h)"
+    )
+  )
+  
+  units <- list(
+    "rainfall" = "mm",
+    "temperature" = "°C",
+    "windspeed" = "km/h"
+  )
+  
+  data <- switch(dataset_type,
+                 "rainfall" = climate_rainfall_interpolated,
+                 "temperature" = climate_temperature_interpolated,
+                 "windspeed" = climate_windspeed_interpolated,
+                 stop("Invalid dataset type"))
+  
+  training_start_date <- as.Date(training_start)
+  training_end_date <- as.Date(training_end)
+  holdout_end_date <- as.Date(holdout_end)
+  
+  horizon <- ceiling(as.numeric(difftime(holdout_end_date, training_end_date, units = "days") / 30))
+  
+  ts_data <- data %>%
+    filter(Station %in% selected_stations,
+           date >= training_start_date,
+           date <= holdout_end_date) %>%
+    select(date, Station, !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    rename(Value = !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    mutate(
+      year_month = yearmonth(date),
+      Type = if_else(date <= training_end_date, "Training", "Hold-out")
+    ) %>%
+    group_by(year_month, Station, Type) %>%
+    summarise(Value = mean(Value, na.rm = TRUE),
+              .groups = 'drop') %>%
+    as_tsibble(key = Station, index = year_month) %>%
+    fill_gaps()
+  
+  training_data <- ts_data %>%
+    filter(Type == "Training")
+  
+  model_spec <- switch(selected_model,
+                       "SES" = ETS(Value ~ error("A") + trend("N") + season("N")),
+                       "Holt" = ETS(Value ~ error("A") + trend("A") + season("N")),
+                       "Damped Holt" = ETS(Value ~ error("A") + trend("Ad") + season("N")),
+                       "Winter-Add" = ETS(Value ~ error("A") + trend("A") + season("A")),
+                       "Winter-Mult" = ETS(Value ~ error("M") + trend("A") + season("M")),
+                       "ARIMA" = ARIMA(Value),
+                       stop("Invalid model type"))
+  
+  fit_models <- training_data %>%
+    model(fcst = model_spec)
+  
+  forecasts <- fit_models %>%
+    forecast(h = horizon)
+  
+  forecast_plot <- forecasts %>%
+    autoplot(ts_data, level = NULL) +
+    geom_vline(xintercept = as.numeric(as.Date(training_end_date)), 
+               linetype = "dashed", 
+               color = "grey50") +
+    facet_wrap(~Station, scales = "free_y", ncol = 1) + 
+    labs(
+      title = paste("Forecast Comparison for", selected_var),
+      subtitle = paste("Model:", selected_model,
+                       "| Training:", format(training_start_date, "%b %Y"),
+                       "to", format(training_end_date, "%b %Y"),
+                       "| Holdout:", format(holdout_end_date, "%b %Y")),
+      x = "Period", 
+      y = paste(selected_var, "(", units[[dataset_type]], ")")
+    ) +
+    theme_light() +
+    theme(
+      strip.text = element_text(face = "bold"), 
+      strip.background = element_rect(fill = "grey30"),
+      panel.spacing = unit(1, "lines"),  
+      legend.position = "right",
+      plot.title = element_text(size = 12, face = "bold"),
+      plot.subtitle = element_text(size = 10),
+      axis.title = element_text(size = 10),
+      axis.text = element_text(size = 9)
+    )
+  
+  plot_height <- max(
+    length(selected_stations) * 150,  
+    length(selected_stations) * 200   
+  )
+  
+  interactive_plot <- ggplotly(forecast_plot, tooltip = "none") %>%
+    layout(
+      hoverlabel = list(bgcolor = "white"),
+      showlegend = TRUE,
+      legend = list(title = list(text = "Type")),
+      height = plot_height, 
+      autosize = TRUE   
+    ) %>%
+    config(responsive = TRUE)
+  
+  # Add custom hovertemplate for each trace
+  for(i in seq_along(interactive_plot$x$data)) {
+    interactive_plot$x$data[[i]]$text <- format(as.Date(interactive_plot$x$data[[i]]$x), "%b %Y")
+    interactive_plot$x$data[[i]]$hovertemplate <- paste(
+      "%{text}<br>",
+      paste(selected_var, ": %{y:.1f}", units[[dataset_type]]),
+      "<extra></extra>"
+    )
+  }
+  
+  accuracy_table <- fit_models %>%
+    accuracy() %>%
+    select(Station, ME, RMSE, MAE, MPE, MAPE, MASE, RMSSE) %>%
+    rename(
+      "Mean Error" = ME,
+      "Root Mean Square Error" = RMSE,
+      "Mean Absolute Error" = MAE,
+      "Mean Percentage Error" = MPE,
+      "Mean Absolute Percentage Error" = MAPE,
+      "Mean Absolute Scaled Error" = MASE,
+      "Root Mean Square Scaled Error" = RMSSE
+    ) %>%
+    kable(
+      caption = "Model Accuracy Metrics by Station",
+      format = "html",
+      digits = 2
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = FALSE
+    )
+  
+  # Return both plot and table
+  return(list(
+    plot = interactive_plot,
+    table = accuracy_table
+  ))
+}
 
 
 
@@ -804,6 +966,7 @@ ui <- navbarPage(
     tags$img(src = "sun.png", height = "30px", style = "margin-right: 10px;"),
     "Weather Pulse"
   ),
+  useShinyjs(),
   theme = bslib::bs_theme(version = 4),
   
   # Add custom CSS
@@ -985,7 +1148,7 @@ ui <- navbarPage(
                                   min = "2020-01-01",
                                   max = "2024-12-31"),
                    
-                   dateInput("holdout_end", "Select Holdout End Date:",
+                   dateInput("holdout_end", "Select Forecast End Date:",
                              value = "2024-12-31",
                              min = "2023-12-31",
                              max = "2025-12-31"),
@@ -994,6 +1157,46 @@ ui <- navbarPage(
                                       choices = c("SES", "Holt", "Damped Holt", 
                                                   "Winter-Add", "Winter-Mult", "ARIMA"),
                                       selected = c("SES", "Holt", "ARIMA"))
+                 ),
+                 
+                 # Station Comparison inputs
+                 conditionalPanel(
+                   condition = "input.forecast_tabs == 'Station Forecast Comparison'",
+                   selectInput("compare_dataset_type", "Select Dataset:",
+                               choices = c("Temperature" = "temperature",
+                                           "Rainfall" = "rainfall",
+                                           "Wind Speed" = "windspeed")),
+                   
+                   selectInput("compare_var_type", "Select Variable:",
+                               choices = NULL),
+                   
+                   selectInput("compare_model", "Select Model:",
+                               choices = c("SES" = "SES",
+                                           "Holt" = "Holt",
+                                           "Damped Holt" = "Damped Holt",
+                                           "Winter-Add" = "Winter-Add",
+                                           "Winter-Mult" = "Winter-Mult",
+                                           "ARIMA" = "ARIMA")),
+                   
+                   div(style = "margin-bottom: 15px;",
+                       tags$label("Select Stations:"),
+                       div(style = "max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white;",
+                           checkboxGroupInput("compare_stations", 
+                                              label = NULL,
+                                              choices = NULL)
+                       )
+                   ),
+                   
+                   dateRangeInput("compare_training_period", "Select Training Period:",
+                                  start = "2020-01-01",
+                                  end = "2023-12-31",
+                                  min = "2020-01-01",
+                                  max = "2024-12-31"),
+                   
+                   dateInput("compare_holdout_end", "Select Forecast End Date:",
+                             value = "2024-12-31",
+                             min = "2023-12-31",
+                             max = "2025-12-31")
                  ),
                  
                  width = 3
@@ -1005,12 +1208,58 @@ ui <- navbarPage(
                             plotOutput("diagnostics_plot", height = "800px")
                    ),
                    tabPanel("Forecast Model Comparison",
-                            plotlyOutput("forecast_plot", height = "500px"),
-                            tags$hr(),
-                            htmlOutput("accuracy_table")
+                            # Add links for switching views
+                            div(
+                              style = "margin-bottom: 15px;",
+                              actionLink(
+                                "show_forecast_plot_link",
+                                "Show Plot",
+                                style = "margin-right: 15px; color: #337ab7; text-decoration: underline;"
+                              ),
+                              actionLink(
+                                "show_forecast_metrics_link",
+                                "Show Accuracy Metrics",
+                                style = "color: #337ab7; text-decoration: underline;"
+                              )
+                            ),
+                            # Container for plot
+                            div(
+                              id = "forecast_plot_container",
+                              plotlyOutput("forecast_plot")
+                            ),
+                            # Container for metrics table
+                            div(
+                              id = "forecast_metrics_container",
+                              style = "display: none;",  # Initially hidden
+                              htmlOutput("accuracy_table")
+                            )
                    ),
-                   tabPanel("Coming Soon",
-                            h3("Additional forecasting features coming soon...")
+                   tabPanel("Station Forecast Comparison",
+                            # Add links for switching views
+                            div(
+                              style = "margin-bottom: 15px;",
+                              actionLink(
+                                "show_plot_link",
+                                "Show Plot",
+                                style = "margin-right: 15px; color: #337ab7; text-decoration: underline;"
+                              ),
+                              actionLink(
+                                "show_metrics_link",
+                                "Show Accuracy Metrics",
+                                style = "color: #337ab7; text-decoration: underline;"
+                              )
+                            ),
+                            # Container for plot
+                            div(
+                              id = "comparison_plot_container",
+                              plotlyOutput("comparison_plot")
+                            ),
+                            # Container for metrics table
+                            div(
+                              id = "comparison_metrics_container",
+                              style = "display: none;",  # Initially hidden
+                              htmlOutput("comparison_table")
+                            )
                    )
                  ),
                  width = 9
@@ -1049,7 +1298,6 @@ ui <- navbarPage(
 
 
 
-# Server
 # Server
 server <- function(input, output, session) {
   # Reactive dataset based on selection
@@ -1284,6 +1532,42 @@ server <- function(input, output, session) {
                       selected = stations[1])
   })
   
+  # Update variable choices for station comparison
+  observe({
+    var_choices <- switch(input$compare_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "compare_var_type", choices = var_choices)
+  })
+  
+  # Update station choices for comparison
+  observe({
+    req(input$compare_dataset_type)
+    data <- switch(input$compare_dataset_type,
+                   "temperature" = climate_temperature_interpolated,
+                   "rainfall" = climate_rainfall_interpolated,
+                   "windspeed" = climate_windspeed_interpolated)
+    
+    stations <- sort(unique(data$Station))
+    updateCheckboxGroupInput(session, "compare_stations",
+                             choices = stations,
+                             selected = stations[1:2])  # Default select first two stations
+  })
+  
   # Update date ranges for forecast comparison
   observe({
     req(input$forecast_dataset_type, input$forecast_station)
@@ -1306,9 +1590,35 @@ server <- function(input, output, session) {
                          max = date_range$max_date)
     
     updateDateInput(session, "holdout_end",
-                    value = date_range$max_date,
+                    value = as.Date("2024-12-31"),
                     min = as.Date("2023-12-31"),
-                    max = as.Date("2025-12-31")) 
+                    max = as.Date("2025-12-31"))
+  })
+  
+  # Update date ranges for comparison
+  observe({
+    req(input$compare_dataset_type)
+    data <- switch(input$compare_dataset_type,
+                   "temperature" = climate_temperature_interpolated,
+                   "rainfall" = climate_rainfall_interpolated,
+                   "windspeed" = climate_windspeed_interpolated)
+    
+    date_range <- data %>%
+      summarise(
+        min_date = min(date),
+        max_date = as.Date("2025-12-31")
+      )
+    
+    updateDateRangeInput(session, "compare_training_period",
+                         start = date_range$min_date,
+                         end = as.Date("2023-12-31"),
+                         min = date_range$min_date,
+                         max = date_range$max_date)
+    
+    updateDateInput(session, "compare_holdout_end",
+                    value = as.Date("2024-12-31"),
+                    min = as.Date("2023-12-31"),
+                    max = as.Date("2025-12-31"))
   })
   
   # Generate forecast comparison outputs
@@ -1343,16 +1653,101 @@ server <- function(input, output, session) {
     })
   })
   
+  # Generate station comparison outputs
+  comparison_results <- reactive({
+    req(input$compare_dataset_type,
+        input$compare_var_type,
+        input$compare_stations,
+        input$compare_model,
+        input$compare_training_period,
+        input$compare_holdout_end,
+        length(input$compare_stations) >= 1)
+    
+    tryCatch({
+      create_station_comparison(
+        dataset_type = input$compare_dataset_type,
+        selected_stations = input$compare_stations,
+        selected_var = input$compare_var_type,
+        selected_model = input$compare_model,
+        training_start = input$compare_training_period[1],
+        training_end = input$compare_training_period[2],
+        holdout_end = input$compare_holdout_end
+      )
+    }, error = function(e) {
+      list(
+        plot = plot_ly() %>%
+          add_annotations(
+            text = paste("Error:", e$message),
+            showarrow = FALSE,
+            font = list(size = 14)
+          ),
+        table = paste("Error:", e$message)
+      )
+    })
+  })
+  
   # Render forecast plot
   output$forecast_plot <- renderPlotly({
     req(forecast_results())
     forecast_results()$plot
   })
   
-  # Render accuracy table
+  # Render forecast accuracy table
   output$accuracy_table <- renderUI({
     req(forecast_results())
     HTML(forecast_results()$table)
+  })
+  
+  # Render comparison plot
+  output$comparison_plot <- renderPlotly({
+    req(comparison_results())
+    n_stations <- length(input$compare_stations)
+    plot_height <- max(n_stations * 200, 400)  # Minimum height of 400px
+    
+    comparison_results()$plot %>%
+      layout(
+        height = plot_height,
+        autosize = TRUE
+      )
+  })
+  
+  # Render comparison accuracy table
+  output$comparison_table <- renderUI({
+    req(comparison_results())
+    div(
+      style = "overflow-x: auto;",  # Makes table scrollable if too wide
+      HTML(comparison_results()$table)
+    )
+  })
+  
+  # Add observers for the link clicks
+  observeEvent(input$show_plot_link, {
+    shinyjs::show("comparison_plot_container")
+    shinyjs::hide("comparison_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_metrics_link').style.fontWeight = 'normal';
+    ")
+  })
+  
+  observeEvent(input$show_metrics_link, {
+    shinyjs::hide("comparison_plot_container")
+    shinyjs::show("comparison_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_plot_link').style.fontWeight = 'normal';
+      document.getElementById('show_metrics_link').style.fontWeight = 'bold';
+    ")
+  })
+  
+  # Initialize the view (show plot by default)
+  observe({
+    req(input$forecast_tabs == "Station Forecast Comparison")
+    shinyjs::show("comparison_plot_container")
+    shinyjs::hide("comparison_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_metrics_link').style.fontWeight = 'normal';
+    ")
   })
   
   # Generate diagnostics plot
@@ -1374,12 +1769,42 @@ server <- function(input, output, session) {
       )
     }, error = function(e) {
       ggplot() +
-        annotate("text", x = 0.5, y = 0.5, 
+        annotate("text", x = 0.5, y = 0.5,
                  label = paste("Error:", e$message),
                  size = 5) +
         theme_void() +
         xlim(0, 1) + ylim(0, 1)
     })
+  })
+  
+  # Add observers for the forecast comparison link clicks
+  observeEvent(input$show_forecast_plot_link, {
+    shinyjs::show("forecast_plot_container")
+    shinyjs::hide("forecast_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
+    ")
+  })
+  
+  observeEvent(input$show_forecast_metrics_link, {
+    shinyjs::hide("forecast_plot_container")
+    shinyjs::show("forecast_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'bold';
+    ")
+  })
+  
+  # Initialize the forecast comparison view (show plot by default)
+  observe({
+    req(input$forecast_tabs == "Forecast Model Comparison")
+    shinyjs::show("forecast_plot_container")
+    shinyjs::hide("forecast_metrics_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
+    ")
   })
 }
 
