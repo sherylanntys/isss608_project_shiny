@@ -8,6 +8,11 @@ library(readr)
 library(tsibble)
 library(feasts)
 library(ggplot2)
+library(fable)
+library(gridExtra)
+library(magrittr)
+library(kableExtra)
+
 
 # Load datasets
 climate_temperature_interpolated <- read_csv("data/climate_temperature_interpolated.csv")
@@ -194,8 +199,8 @@ create_calendar_heatmap <- function(data, selected_station, selected_year, datas
   
   reverse_scale <- ifelse(dataset_type == "temperature", FALSE, TRUE)
   
-  first_day <- as.Date(sprintf("%d-01-01", selected_year))
-  last_date <- as.Date(sprintf("%d-12-31", selected_year))
+  first_day <- as.Date(paste0(selected_year, "-01-01"))
+  last_date <- as.Date(paste0(selected_year, "-12-31"))
   
   plot_data <- data %>%
     filter(Station == selected_station,
@@ -524,6 +529,269 @@ create_ts_decomposition <- function(dataset_type,
   return(decomp_plot)
 }
 
+# Model Diagnostics Function
+create_model_diagnostics <- function(dataset_type,
+                                     selected_station,
+                                     selected_var,
+                                     selected_model,
+                                     training_start = "2020-01-01",
+                                     training_end = "2023-12-31") {
+  
+  var_mapping <- list(
+    "rainfall" = list(
+      "Total Rainfall" = "Daily Rainfall Total (mm)",
+      "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall (mm)",
+      "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall (mm)",
+      "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall (mm)"
+    ),
+    "temperature" = list(
+      "Mean Temperature" = "Mean Temperature (°C)",
+      "Maximum Temperature" = "Maximum Temperature (°C)",
+      "Minimum Temperature" = "Minimum Temperature (°C)"
+    ),
+    "windspeed" = list(
+      "Mean Wind Speed" = "Mean Wind Speed (km/h)",
+      "Max Wind Speed" = "Max Wind Speed (km/h)"
+    )
+  )
+  
+  data <- switch(dataset_type,
+                 "rainfall" = climate_rainfall_interpolated,
+                 "temperature" = climate_temperature_interpolated,
+                 "windspeed" = climate_windspeed_interpolated,
+                 stop("Invalid dataset type"))
+  
+  training_start_date <- as.Date(training_start)
+  training_end_date <- as.Date(training_end)
+  
+  ts_data <- data %>%
+    filter(Station == selected_station,
+           date >= training_start_date,
+           date <= training_end_date) %>%
+    select(date, Station, !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    rename(Value = !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    mutate(year_month = yearmonth(date)) %>%
+    group_by(year_month) %>%
+    summarise(Value = mean(Value, na.rm = TRUE),
+              .groups = 'drop') %>%
+    as_tsibble(index = year_month) %>%
+    fill_gaps()
+  
+  model_spec <- switch(selected_model,
+                       "SES" = ETS(Value ~ error("A") + trend("N") + season("N")),
+                       "Holt" = ETS(Value ~ error("A") + trend("A") + season("N")),
+                       "Damped Holt" = ETS(Value ~ error("A") + trend("Ad") + season("N")),
+                       "Winter-Add" = ETS(Value ~ error("A") + trend("A") + season("A")),
+                       "Winter-Mult" = ETS(Value ~ error("M") + trend("A") + season("M")),
+                       "ARIMA" = ARIMA(Value),
+                       stop("Invalid model type"))
+  
+  fit <- ts_data %>%
+    model(Model = model_spec) 
+  
+  residuals_plot <- fit %>%
+    augment() %>%
+    autoplot(.innov) +
+    labs(title = paste("Residuals Plot for", selected_model, "Model"),
+         subtitle = paste("Station:", selected_station, "| Variable:", selected_var),
+         y = "Residuals",
+         x = "Time") +
+    theme_light() +
+    theme(plot.title = element_text(size = 12, face = "bold"),
+          plot.subtitle = element_text(size = 10),
+          axis.title = element_text(size = 10),
+          axis.text = element_text(size = 9))
+  
+  acf_plot <- fit %>%
+    augment() %>%
+    ACF(.innov) %>%
+    autoplot() +
+    labs(title = "ACF of Residuals") +
+    theme_light()
+  
+  hist_plot <- fit %>%
+    augment() %>%
+    ggplot(aes(x = .innov)) +
+    geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+    labs(title = "Histogram of Residuals",
+         x = "Residuals",
+         y = "Count") +
+    theme_light()
+  
+  combined_plot <- gridExtra::grid.arrange(
+    residuals_plot, acf_plot, hist_plot,
+    ncol = 1,
+    heights = c(1, 1, 1)
+  )
+  
+  return(combined_plot)
+}
+
+# Time Series Forecasting Model Comparison
+create_forecast <- function(dataset_type,
+                            selected_station,
+                            selected_var,
+                            training_start = "2020-01-01",
+                            training_end = "2023-12-31",
+                            holdout_end = "2024-12-31",
+                            models = c("SES", "Holt", "Damped Holt", "Winter-Add", "Winter-Mult", "ARIMA")) {
+  
+  var_mapping <- list(
+    "rainfall" = list(
+      "Total Rainfall" = "Daily Rainfall Total (mm)",
+      "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall (mm)",
+      "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall (mm)",
+      "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall (mm)"
+    ),
+    "temperature" = list(
+      "Mean Temperature" = "Mean Temperature (°C)",
+      "Maximum Temperature" = "Maximum Temperature (°C)",
+      "Minimum Temperature" = "Minimum Temperature (°C)"
+    ),
+    "windspeed" = list(
+      "Mean Wind Speed" = "Mean Wind Speed (km/h)",
+      "Max Wind Speed" = "Max Wind Speed (km/h)"
+    )
+  )
+  
+  units <- list(
+    "rainfall" = "mm",
+    "temperature" = "°C",
+    "windspeed" = "km/h"
+  )
+  
+  data <- switch(dataset_type,
+                 "rainfall" = climate_rainfall_interpolated,
+                 "temperature" = climate_temperature_interpolated,
+                 "windspeed" = climate_windspeed_interpolated,
+                 stop("Invalid dataset type"))
+  
+  training_start_date <- as.Date(training_start)
+  training_end_date <- as.Date(training_end)
+  holdout_end_date <- as.Date(holdout_end)
+  
+  horizon <- length(seq(training_end_date, holdout_end_date, by = "month")) - 1
+  
+  message("Training period: ", training_start_date, " to ", training_end_date)
+  message("Holdout period end: ", holdout_end_date)
+  message("Forecast horizon (months): ", horizon)
+  
+  ts_data <- data %>%
+    filter(Station == selected_station,
+           date >= training_start_date,
+           date <= holdout_end_date) %>%
+    select(date, Station, !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    rename(Value = !!sym(var_mapping[[dataset_type]][[selected_var]])) %>%
+    mutate(
+      year_month = yearmonth(date),
+      Type = if_else(date <= training_end_date, "Training", "Hold-out")
+    ) %>%
+    group_by(year_month) %>%
+    summarise(
+      Value = mean(Value, na.rm = TRUE),
+      Type = first(Type),
+      .groups = 'drop'
+    ) %>%
+    as_tsibble(index = year_month) %>%
+    fill_gaps()
+  
+  training_data <- ts_data %>%
+    filter(Type == "Training")
+  
+  model_spec <- list()
+  
+  if ("SES" %in% models) {
+    model_spec$SES <- ETS(Value ~ error("A") + trend("N") + season("N"))
+  }
+  if ("Holt" %in% models) {
+    model_spec$Holt <- ETS(Value ~ error("A") + trend("A") + season("N"))
+  }
+  if ("Damped Holt" %in% models) {
+    model_spec$`Damped Holt` <- ETS(Value ~ error("A") + trend("Ad") + season("N"))
+  }
+  if ("Winter-Add" %in% models) {
+    model_spec$`Winter-Add` <- ETS(Value ~ error("A") + trend("A") + season("A"))
+  }
+  if ("Winter-Mult" %in% models) {
+    model_spec$`Winter-Mult` <- ETS(Value ~ error("M") + trend("A") + season("M"))
+  }
+  if ("ARIMA" %in% models) {
+    model_spec$ARIMA <- ARIMA(Value)
+  }
+  
+  fit_models <- training_data %>%
+    model(!!!model_spec)
+  
+  forecast_data <- fit_models %>%
+    forecast(h = paste(horizon, "months"))
+  
+  base_plot <- forecast_data %>%
+    autoplot(ts_data, level = NULL) +
+    theme_light() +
+    geom_vline(xintercept = yearmonth(training_end_date +days(1)), 
+               linetype = "dashed", 
+               color = "grey50") +
+    labs(
+      title = paste("Forecast for", selected_var, "at", selected_station),
+      subtitle = paste("Training:", format(training_start_date, "%b %Y"),
+                       "to", format(training_end_date, "%b %Y"),
+                       "| Holdout:", format(holdout_end_date, "%b %Y")),
+      x = "Period",
+      y = paste(selected_var, "(", units[[dataset_type]], ")")
+    ) +
+    theme(
+      plot.title = element_text(size = 12, face = "bold"),
+      axis.title = element_text(size = 10),
+      axis.text = element_text(size = 9)
+    )
+  
+  forecast_plot <- ggplotly(base_plot, tooltip = c("x", "y", ".model")) %>%
+    layout(
+      hoverlabel = list(bgcolor = "white"),
+      showlegend = TRUE,
+      legend = list(title = list(text = "Models"))
+    )
+  
+  for(i in 1:length(forecast_plot$x$data)) {
+    forecast_plot$x$data[[i]]$text <- format(as.Date(forecast_plot$x$data[[i]]$x), "%b %Y")
+    forecast_plot$x$data[[i]]$hovertemplate <- paste(
+      "%{text}<br>",
+      "Value: %{y:.1f}", units[[dataset_type]], "<br>",
+      "Model: ", forecast_plot$x$data[[i]]$name, "<br>",
+      "<extra></extra>"
+    )
+  }
+  
+  accuracy_table <- fit_models %>%
+    accuracy() %>%
+    select(.model, ME, RMSE, MAE, MPE, MAPE, MASE, RMSSE) %>%
+    rename(
+      Model = .model,
+      "Mean Error" = ME,
+      "Root Mean Square Error" = RMSE,
+      "Mean Absolute Error" = MAE,
+      "Mean Percentage Error" = MPE,
+      "Mean Absolute Percentage Error" = MAPE,
+      "Mean Absolute Scaled Error" = MASE,
+      "Root Mean Square Scaled Error" = RMSSE
+    ) %>%
+    kable(
+      caption = "Model Accuracy Metrics",
+      format = "html",
+      digits = 2
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = FALSE
+    )
+  
+  return(list(
+    plot = forecast_plot,
+    table = accuracy_table
+  ))
+}
+
+
 
 
 
@@ -541,24 +809,17 @@ ui <- navbarPage(
   # Add custom CSS
   tags$head(
     tags$style(HTML("
-        /* Style for checkbox container */
         .checkbox {
             margin: 5px 0;
         }
-        
-        /* Style for checkbox labels */
         .checkbox label {
             display: flex;
             align-items: center;
             padding: 3px 0;
         }
-        
-        /* Style for checkbox input */
         .checkbox input[type='checkbox'] {
             margin-right: 8px;
         }
-        
-        /* Hover effect */
         .checkbox label:hover {
             background-color: #f8f8f8;
         }
@@ -588,6 +849,8 @@ ui <- navbarPage(
       'Time Series Analysis',
       '</div>'
     )),
+    
+    # Exploratory Data Analysis Panel
     tabPanel("Exploratory Data Analysis",
              sidebarLayout(
                sidebarPanel(
@@ -599,7 +862,7 @@ ui <- navbarPage(
                  selectInput("var_type", "Select Variable:",
                              choices = NULL),
                  
-                 # Checkbox group for stations (for line chart)
+                 # Controls for different visualizations
                  conditionalPanel(
                    condition = "input.viz_type == 'Line Chart'",
                    div(style = "margin-bottom: 15px;",
@@ -615,7 +878,6 @@ ui <- navbarPage(
                                   end = max(climate_temperature_interpolated$date))
                  ),
                  
-                 # Controls for calendar heatmap
                  conditionalPanel(
                    condition = "input.viz_type == 'Calendar Heatmap'",
                    selectInput("heatmap_station", "Select Station:",
@@ -624,7 +886,6 @@ ui <- navbarPage(
                                choices = NULL)
                  ),
                  
-                 # Controls for sunburst plot
                  conditionalPanel(
                    condition = "input.viz_type == 'Sunburst Plot'",
                    selectInput("sunburst_station", "Select Station:",
@@ -637,14 +898,13 @@ ui <- navbarPage(
                                sep = "")
                  ),
                  
-                 # Controls for STL Decomposition
                  conditionalPanel(
                    condition = "input.viz_type == 'STL Decomposition'",
                    selectInput("decomp_station", "Select Station:",
                                choices = NULL),
                    dateRangeInput("decomp_date_range", "Select Date Range:",
                                   start = "2020-01-01",
-                                  end = "2024-12-31",
+                                  end = "2023-12-31",
                                   min = "2020-01-01",
                                   max = "2024-12-31")
                  ),
@@ -671,18 +931,127 @@ ui <- navbarPage(
                )
              )
     ),
+    
+    # Time Series Forecasting Panel
     tabPanel("Time Series Forecasting",
-             fluidPage(
-               h3("Time Series Forecasting"),
-               p("Coming soon...")
+             sidebarLayout(
+               sidebarPanel(
+                 # Model Diagnostics inputs
+                 conditionalPanel(
+                   condition = "input.forecast_tabs == 'Model Diagnostics'",
+                   selectInput("diag_dataset_type", "Select Dataset:",
+                               choices = c("Temperature" = "temperature",
+                                           "Rainfall" = "rainfall",
+                                           "Wind Speed" = "windspeed")),
+                   
+                   selectInput("diag_var_type", "Select Variable:",
+                               choices = NULL),
+                   
+                   selectInput("diag_station", "Select Station:",
+                               choices = NULL),
+                   
+                   selectInput("diag_model", "Select Model:",
+                               choices = c("SES" = "SES",
+                                           "Holt" = "Holt",
+                                           "Damped Holt" = "Damped Holt",
+                                           "Winter-Add" = "Winter-Add",
+                                           "Winter-Mult" = "Winter-Mult",
+                                           "ARIMA" = "ARIMA")),
+                   
+                   dateRangeInput("diag_date_range", "Select Training Period:",
+                                  start = "2020-01-01",
+                                  end = "2023-12-31",
+                                  min = "2020-01-01",
+                                  max = "2024-12-31")
+                 ),
+                 
+                 # Forecast Model Comparison inputs
+                 conditionalPanel(
+                   condition = "input.forecast_tabs == 'Forecast Model Comparison'",
+                   selectInput("forecast_dataset_type", "Select Dataset:",
+                               choices = c("Temperature" = "temperature",
+                                           "Rainfall" = "rainfall",
+                                           "Wind Speed" = "windspeed")),
+                   
+                   selectInput("forecast_var_type", "Select Variable:",
+                               choices = NULL),
+                   
+                   selectInput("forecast_station", "Select Station:",
+                               choices = NULL),
+                   
+                   dateRangeInput("training_period", "Select Training Period:",
+                                  start = "2020-01-01",
+                                  end = "2023-12-31",
+                                  min = "2020-01-01",
+                                  max = "2024-12-31"),
+                   
+                   dateInput("holdout_end", "Select Holdout End Date:",
+                             value = "2024-12-31",
+                             min = "2023-12-31",
+                             max = "2025-12-31"),
+                   
+                   checkboxGroupInput("selected_models", "Select Models:",
+                                      choices = c("SES", "Holt", "Damped Holt", 
+                                                  "Winter-Add", "Winter-Mult", "ARIMA"),
+                                      selected = c("SES", "Holt", "ARIMA"))
+                 ),
+                 
+                 width = 3
+               ),
+               mainPanel(
+                 tabsetPanel(
+                   id = "forecast_tabs",
+                   tabPanel("Model Diagnostics",
+                            plotOutput("diagnostics_plot", height = "800px")
+                   ),
+                   tabPanel("Forecast Model Comparison",
+                            plotlyOutput("forecast_plot", height = "500px"),
+                            tags$hr(),
+                            htmlOutput("accuracy_table")
+                   ),
+                   tabPanel("Coming Soon",
+                            h3("Additional forecasting features coming soon...")
+                   )
+                 ),
+                 width = 9
+               )
              )
     )
   )
 )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Server
 # Server
 server <- function(input, output, session) {
-  
   # Reactive dataset based on selection
   selected_data <- reactive({
     switch(input$dataset_type,
@@ -691,7 +1060,7 @@ server <- function(input, output, session) {
            "windspeed" = climate_windspeed_interpolated)
   })
   
-  # Update variable choices based on dataset
+  # Update variable choices for EDA
   observe({
     var_choices <- switch(input$dataset_type,
                           "temperature" = c(
@@ -713,7 +1082,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "var_type", choices = var_choices)
   })
   
-  # Update station choices for all plots
+  # Update station choices for all visualizations
   observe({
     req(input$dataset_type)
     stations <- sort(unique(selected_data()$Station))
@@ -735,106 +1104,91 @@ server <- function(input, output, session) {
                       selected = stations[1])
   })
   
-  # Update year choices for heatmap
+  # Update year choices for calendar heatmap
   observe({
-    req(input$dataset_type, input$heatmap_station)
-    years <- selected_data() %>%
-      filter(Station == input$heatmap_station) %>%
-      pull(date) %>%
-      year() %>%
-      unique() %>%
-      sort()
+    req(input$dataset_type)
+    years <- sort(unique(year(selected_data()$date)))
     updateSelectInput(session, "selected_year",
                       choices = years,
                       selected = max(years))
   })
   
-  # Update year range for sunburst
-  observe({
-    req(input$dataset_type, input$sunburst_station)
-    years <- selected_data() %>%
-      filter(Station == input$sunburst_station) %>%
-      pull(date) %>%
-      year() %>%
-      unique() %>%
-      sort()
-    
-    updateSliderInput(session, "year_range",
-                      min = min(years),
-                      max = max(years),
-                      value = c(min(years), max(years)))
-  })
-  
-  # Update date range for decomposition
-  observe({
-    req(input$dataset_type, input$decomp_station)
-    date_range <- selected_data() %>%
-      filter(Station == input$decomp_station) %>%
-      summarise(
-        min_date = min(date),
-        max_date = max(date)
-      )
-    
-    updateDateRangeInput(session, "decomp_date_range",
-                         start = date_range$min_date,
-                         end = date_range$max_date,
-                         min = date_range$min_date,
-                         max = date_range$max_date)
-  })
-  
-  # Generate line chart
+  # Line Chart Output
   output$line_chart <- renderPlotly({
     req(input$dataset_type,
         input$var_type,
         input$selected_stations,
         input$date_range)
     
-    create_line_chart(
-      data = selected_data(),
-      selected_stations = input$selected_stations,
-      dataset_type = input$dataset_type,
-      var_type = input$var_type,
-      date_range = input$date_range
-    )
+    tryCatch({
+      create_line_chart(
+        data = selected_data(),
+        selected_stations = input$selected_stations,
+        dataset_type = input$dataset_type,
+        var_type = input$var_type,
+        date_range = input$date_range
+      )
+    }, error = function(e) {
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
+    })
   })
   
-  # Generate calendar heatmap
+  # Calendar Heatmap Output
   output$calendar_heatmap <- renderPlotly({
     req(input$dataset_type,
         input$var_type,
         input$heatmap_station,
         input$selected_year)
     
-    create_calendar_heatmap(
-      data = selected_data(),
-      selected_station = input$heatmap_station,
-      selected_year = as.numeric(input$selected_year),
-      dataset_type = input$dataset_type,
-      var_type = input$var_type
-    )
+    tryCatch({
+      create_calendar_heatmap(
+        data = selected_data(),
+        selected_station = input$heatmap_station,
+        selected_year = input$selected_year,
+        dataset_type = input$dataset_type,
+        var_type = input$var_type
+      )
+    }, error = function(e) {
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
+    })
   })
   
-  # Generate sunburst plot
+  # Sunburst Plot Output
   output$sunburst_plot <- renderPlotly({
     req(input$dataset_type,
         input$var_type,
         input$sunburst_station,
         input$year_range)
     
-    plot_data <- selected_data() %>%
-      mutate(Year = year(date),
-             Month = month(date))
-    
-    create_sunburst(
-      data = plot_data,
-      selected_station = input$sunburst_station,
-      dataset_type = input$dataset_type,
-      var_type = input$var_type,
-      year_range = input$year_range
-    )
+    tryCatch({
+      create_sunburst(
+        data = selected_data(),
+        selected_station = input$sunburst_station,
+        dataset_type = input$dataset_type,
+        var_type = input$var_type,
+        year_range = input$year_range
+      )
+    }, error = function(e) {
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
+    })
   })
   
-  # Generate decomposition plot
+  # STL Decomposition Output
   output$decomposition_plot <- renderPlot({
     req(input$dataset_type,
         input$var_type,
@@ -849,7 +1203,176 @@ server <- function(input, output, session) {
         date_range = input$decomp_date_range
       )
     }, error = function(e) {
-      # Create an error plot
+      ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = paste("Error:", e$message),
+                 size = 5) +
+        theme_void() +
+        xlim(0, 1) + ylim(0, 1)
+    })
+  })
+  
+  # Update variable choices for diagnostics
+  observe({
+    var_choices <- switch(input$diag_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "diag_var_type", choices = var_choices)
+  })
+  
+  # Update station choices for diagnostics
+  observe({
+    req(input$diag_dataset_type)
+    data <- switch(input$diag_dataset_type,
+                   "temperature" = climate_temperature_interpolated,
+                   "rainfall" = climate_rainfall_interpolated,
+                   "windspeed" = climate_windspeed_interpolated)
+    
+    stations <- sort(unique(data$Station))
+    updateSelectInput(session, "diag_station",
+                      choices = stations,
+                      selected = stations[1])
+  })
+  
+  # Update variable choices for forecast comparison
+  observe({
+    var_choices <- switch(input$forecast_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "forecast_var_type", choices = var_choices)
+  })
+  
+  # Update station choices for forecast comparison
+  observe({
+    req(input$forecast_dataset_type)
+    data <- switch(input$forecast_dataset_type,
+                   "temperature" = climate_temperature_interpolated,
+                   "rainfall" = climate_rainfall_interpolated,
+                   "windspeed" = climate_windspeed_interpolated)
+    
+    stations <- sort(unique(data$Station))
+    updateSelectInput(session, "forecast_station",
+                      choices = stations,
+                      selected = stations[1])
+  })
+  
+  # Update date ranges for forecast comparison
+  observe({
+    req(input$forecast_dataset_type, input$forecast_station)
+    data <- switch(input$forecast_dataset_type,
+                   "temperature" = climate_temperature_interpolated,
+                   "rainfall" = climate_rainfall_interpolated,
+                   "windspeed" = climate_windspeed_interpolated)
+    
+    date_range <- data %>%
+      filter(Station == input$forecast_station) %>%
+      summarise(
+        min_date = min(date),
+        max_date = as.Date("2025-12-31")
+      )
+    
+    updateDateRangeInput(session, "training_period",
+                         start = date_range$min_date,
+                         end = as.Date("2023-12-31"),
+                         min = date_range$min_date,
+                         max = date_range$max_date)
+    
+    updateDateInput(session, "holdout_end",
+                    value = date_range$max_date,
+                    min = as.Date("2023-12-31"),
+                    max = as.Date("2025-12-31")) 
+  })
+  
+  # Generate forecast comparison outputs
+  forecast_results <- reactive({
+    req(input$forecast_dataset_type,
+        input$forecast_var_type,
+        input$forecast_station,
+        input$training_period,
+        input$holdout_end,
+        input$selected_models)
+    
+    tryCatch({
+      create_forecast(
+        dataset_type = input$forecast_dataset_type,
+        selected_station = input$forecast_station,
+        selected_var = input$forecast_var_type,
+        training_start = input$training_period[1],
+        training_end = input$training_period[2],
+        holdout_end = input$holdout_end,
+        models = input$selected_models
+      )
+    }, error = function(e) {
+      list(
+        plot = plot_ly() %>%
+          add_annotations(
+            text = paste("Error:", e$message),
+            showarrow = FALSE,
+            font = list(size = 14)
+          ),
+        table = paste("Error:", e$message)
+      )
+    })
+  })
+  
+  # Render forecast plot
+  output$forecast_plot <- renderPlotly({
+    req(forecast_results())
+    forecast_results()$plot
+  })
+  
+  # Render accuracy table
+  output$accuracy_table <- renderUI({
+    req(forecast_results())
+    HTML(forecast_results()$table)
+  })
+  
+  # Generate diagnostics plot
+  output$diagnostics_plot <- renderPlot({
+    req(input$diag_dataset_type,
+        input$diag_var_type,
+        input$diag_station,
+        input$diag_model,
+        input$diag_date_range)
+    
+    tryCatch({
+      create_model_diagnostics(
+        dataset_type = input$diag_dataset_type,
+        selected_station = input$diag_station,
+        selected_var = input$diag_var_type,
+        selected_model = input$diag_model,
+        training_start = input$diag_date_range[1],
+        training_end = input$diag_date_range[2]
+      )
+    }, error = function(e) {
       ggplot() +
         annotate("text", x = 0.5, y = 0.5, 
                  label = paste("Error:", e$message),
