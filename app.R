@@ -16,6 +16,7 @@ library(shinyjs)
 library(forecast)  
 library(stats)
 library(urca)
+library(tidyr)
 
 
 # Load datasets
@@ -789,9 +790,42 @@ create_forecast <- function(dataset_type,
       full_width = FALSE
     )
   
+  # Alternative approach with more explicit data handling
+  forecast_table <- forecast_data %>%
+    as_tibble() %>%
+    group_by(.model) %>%
+    mutate(
+      `Forecast Period` = row_number()
+    ) %>%
+    ungroup() %>%
+    mutate(
+      Value = round(.mean, 2)
+    ) %>%
+    select(`Forecast Period`, Model = .model, Value) %>%
+    tidyr::pivot_wider(
+      names_from = Model,
+      values_from = Value,
+      id_cols = `Forecast Period`
+    ) %>%
+    kable(
+      caption = paste("Forecast Values for", selected_var),
+      format = "html",
+      digits = 2,
+      align = "c"  # Center-align all columns
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = TRUE,
+      position = "center",
+      font_size = 14
+    )  # Removed the problematic column_spec
+  
+  
+  # Modify the return statement at the end of the function
   return(list(
     plot = forecast_plot,
-    table = accuracy_table
+    table = accuracy_table,
+    forecast_table = forecast_table
   ))
 }
 
@@ -960,6 +994,7 @@ create_station_comparison <- function(dataset_type,
 
 
 # UI
+# UI
 ui <- navbarPage(
   title = div(
     style = "display: flex; align-items: center;",
@@ -1005,6 +1040,7 @@ ui <- navbarPage(
     )
   ),
   
+  # Time Series Analysis Menu
   navbarMenu(
     HTML(paste0(
       '<div style="display: inline-flex; align-items: center;">',
@@ -1219,6 +1255,11 @@ ui <- navbarPage(
                               actionLink(
                                 "show_forecast_metrics_link",
                                 "Show Accuracy Metrics",
+                                style = "margin-right: 15px; color: #337ab7; text-decoration: underline;"
+                              ),
+                              actionLink(
+                                "show_forecast_results_link",
+                                "Show Forecast Results",
                                 style = "color: #337ab7; text-decoration: underline;"
                               )
                             ),
@@ -1232,6 +1273,12 @@ ui <- navbarPage(
                               id = "forecast_metrics_container",
                               style = "display: none;",  # Initially hidden
                               htmlOutput("accuracy_table")
+                            ),
+                            # Container for forecast results table
+                            div(
+                              id = "forecast_results_container",
+                              style = "display: none; width: 100%; padding: 15px;",  # Added width and padding
+                              htmlOutput("forecast_results_table")
                             )
                    ),
                    tabPanel("Station Forecast Comparison",
@@ -1262,6 +1309,84 @@ ui <- navbarPage(
                             )
                    )
                  ),
+                 width = 9
+               )
+             )
+    )
+  ),
+  
+  # Geospatial Analysis Menu
+  navbarMenu(
+    HTML(paste0(
+      '<div style="display: inline-flex; align-items: center;">',
+      '<img src="google-maps.png" height="15px" style="margin-right: 5px;">',
+      'Geospatial Analysis',
+      '</div>'
+    )),
+    
+    tabPanel("Exploratory Data Analysis",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("map_dataset_type", "Select Dataset:",
+                             choices = c("Temperature" = "temperature",
+                                         "Rainfall" = "rainfall",
+                                         "Wind Speed" = "windspeed")),
+                 selectInput("map_var_type", "Select Variable:",
+                             choices = NULL),
+                 dateInput("map_date", "Select Date:",
+                           value = Sys.Date(),
+                           min = "2020-01-01",
+                           max = "2024-12-31"),
+                 width = 3
+               ),
+               mainPanel(
+                 plotlyOutput("station_map", height = "600px"),
+                 width = 9
+               )
+             )
+    ),
+    
+    tabPanel("Spatial Autocorrelation",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("spatial_dataset_type", "Select Dataset:",
+                             choices = c("Temperature" = "temperature",
+                                         "Rainfall" = "rainfall",
+                                         "Wind Speed" = "windspeed")),
+                 selectInput("spatial_var_type", "Select Variable:",
+                             choices = NULL),
+                 dateRangeInput("spatial_date_range", "Select Date Range:",
+                                start = "2020-01-01",
+                                end = "2024-12-31"),
+                 width = 3
+               ),
+               mainPanel(
+                 plotlyOutput("spatial_pattern_plot", height = "600px"),
+                 width = 9
+               )
+             )
+    ),
+    
+    tabPanel("Inverse Distance Weighted (IDW) Interpolation",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("heatmap_dataset_type", "Select Dataset:",
+                             choices = c("Temperature" = "temperature",
+                                         "Rainfall" = "rainfall",
+                                         "Wind Speed" = "windspeed")),
+                 selectInput("heatmap_var_type", "Select Variable:",
+                             choices = NULL),
+                 selectInput("heatmap_aggregation", "Select Aggregation:",
+                             choices = c("Daily" = "daily",
+                                         "Weekly" = "weekly",
+                                         "Monthly" = "monthly")),
+                 dateRangeInput("heatmap_date_range", "Select Date Range:",
+                                start = "2020-01-01",
+                                end = "2024-12-31"),
+                 width = 3
+               ),
+               mainPanel(
+                 plotlyOutput("spatial_heatmap", height = "600px"),
                  width = 9
                )
              )
@@ -1460,6 +1585,7 @@ server <- function(input, output, session) {
     })
   })
   
+  
   # Update variable choices for diagnostics
   observe({
     var_choices <- switch(input$diag_dataset_type,
@@ -1496,6 +1622,36 @@ server <- function(input, output, session) {
                       selected = stations[1])
   })
   
+  # Output for diagnostics plot
+  output$diagnostics_plot <- renderPlot({
+    req(input$diag_dataset_type,
+        input$diag_var_type,
+        input$diag_station,
+        input$diag_model,
+        input$diag_date_range)
+    
+    tryCatch({
+      create_model_diagnostics(
+        dataset_type = input$diag_dataset_type,
+        selected_station = input$diag_station,
+        selected_var = input$diag_var_type,
+        selected_model = input$diag_model,
+        training_start = input$diag_date_range[1],
+        training_end = input$diag_date_range[2]
+      )
+    }, error = function(e) {
+      # Create an error plot
+      ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = paste("Error:", e$message),
+                 size = 5) +
+        theme_void() +
+        xlim(0, 1) + ylim(0, 1)
+    })
+  }, height = function() {
+    800  # Fixed height for the plot
+  })
+  
   # Update variable choices for forecast comparison
   observe({
     var_choices <- switch(input$forecast_dataset_type,
@@ -1517,6 +1673,8 @@ server <- function(input, output, session) {
     )
     updateSelectInput(session, "forecast_var_type", choices = var_choices)
   })
+  
+
   
   # Update station choices for forecast comparison
   observe({
@@ -1565,60 +1723,7 @@ server <- function(input, output, session) {
     stations <- sort(unique(data$Station))
     updateCheckboxGroupInput(session, "compare_stations",
                              choices = stations,
-                             selected = stations[1:2])  # Default select first two stations
-  })
-  
-  # Update date ranges for forecast comparison
-  observe({
-    req(input$forecast_dataset_type, input$forecast_station)
-    data <- switch(input$forecast_dataset_type,
-                   "temperature" = climate_temperature_interpolated,
-                   "rainfall" = climate_rainfall_interpolated,
-                   "windspeed" = climate_windspeed_interpolated)
-    
-    date_range <- data %>%
-      filter(Station == input$forecast_station) %>%
-      summarise(
-        min_date = min(date),
-        max_date = as.Date("2025-12-31")
-      )
-    
-    updateDateRangeInput(session, "training_period",
-                         start = date_range$min_date,
-                         end = as.Date("2023-12-31"),
-                         min = date_range$min_date,
-                         max = date_range$max_date)
-    
-    updateDateInput(session, "holdout_end",
-                    value = as.Date("2024-12-31"),
-                    min = as.Date("2023-12-31"),
-                    max = as.Date("2025-12-31"))
-  })
-  
-  # Update date ranges for comparison
-  observe({
-    req(input$compare_dataset_type)
-    data <- switch(input$compare_dataset_type,
-                   "temperature" = climate_temperature_interpolated,
-                   "rainfall" = climate_rainfall_interpolated,
-                   "windspeed" = climate_windspeed_interpolated)
-    
-    date_range <- data %>%
-      summarise(
-        min_date = min(date),
-        max_date = as.Date("2025-12-31")
-      )
-    
-    updateDateRangeInput(session, "compare_training_period",
-                         start = date_range$min_date,
-                         end = as.Date("2023-12-31"),
-                         min = date_range$min_date,
-                         max = date_range$max_date)
-    
-    updateDateInput(session, "compare_holdout_end",
-                    value = as.Date("2024-12-31"),
-                    min = as.Date("2023-12-31"),
-                    max = as.Date("2025-12-31"))
+                             selected = stations[1:2])
   })
   
   # Generate forecast comparison outputs
@@ -1648,7 +1753,8 @@ server <- function(input, output, session) {
             showarrow = FALSE,
             font = list(size = 14)
           ),
-        table = paste("Error:", e$message)
+        table = paste("Error:", e$message),
+        forecast_table = paste("Error:", e$message)
       )
     })
   })
@@ -1698,6 +1804,15 @@ server <- function(input, output, session) {
     HTML(forecast_results()$table)
   })
   
+  # Render forecast results table
+  output$forecast_results_table <- renderUI({
+    req(forecast_results())
+    div(
+      style = "width: 100%; margin: auto;",  # Center the table and use full width
+      HTML(forecast_results()$forecast_table)
+    )
+  })
+  
   # Render comparison plot
   output$comparison_plot <- renderPlotly({
     req(comparison_results())
@@ -1720,7 +1835,54 @@ server <- function(input, output, session) {
     )
   })
   
-  # Add observers for the link clicks
+  # Add observers for the forecast comparison link clicks
+  observeEvent(input$show_forecast_plot_link, {
+    shinyjs::show("forecast_plot_container")
+    shinyjs::hide("forecast_metrics_container")
+    shinyjs::hide("forecast_results_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_results_link').style.fontWeight = 'normal';
+    ")
+  })
+  
+  observeEvent(input$show_forecast_metrics_link, {
+    shinyjs::hide("forecast_plot_container")
+    shinyjs::show("forecast_metrics_container")
+    shinyjs::hide("forecast_results_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'bold';
+      document.getElementById('show_forecast_results_link').style.fontWeight = 'normal';
+    ")
+  })
+  
+  observeEvent(input$show_forecast_results_link, {
+    shinyjs::hide("forecast_plot_container")
+    shinyjs::hide("forecast_metrics_container")
+    shinyjs::show("forecast_results_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_results_link').style.fontWeight = 'bold';
+    ")
+  })
+  
+  # Initialize the forecast comparison view (show plot by default)
+  observe({
+    req(input$forecast_tabs == "Forecast Model Comparison")
+    shinyjs::show("forecast_plot_container")
+    shinyjs::hide("forecast_metrics_container")
+    shinyjs::hide("forecast_results_container")
+    shinyjs::runjs("
+      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
+      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_forecast_results_link').style.fontWeight = 'normal';
+    ")
+  })
+  
+  # Add observers for the station comparison link clicks
   observeEvent(input$show_plot_link, {
     shinyjs::show("comparison_plot_container")
     shinyjs::hide("comparison_metrics_container")
@@ -1739,7 +1901,7 @@ server <- function(input, output, session) {
     ")
   })
   
-  # Initialize the view (show plot by default)
+  # Initialize the station comparison view (show plot by default)
   observe({
     req(input$forecast_tabs == "Station Forecast Comparison")
     shinyjs::show("comparison_plot_container")
@@ -1750,61 +1912,138 @@ server <- function(input, output, session) {
     ")
   })
   
-  # Generate diagnostics plot
-  output$diagnostics_plot <- renderPlot({
-    req(input$diag_dataset_type,
-        input$diag_var_type,
-        input$diag_station,
-        input$diag_model,
-        input$diag_date_range)
+  # Update variable choices for map
+  observe({
+    var_choices <- switch(input$map_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "map_var_type", choices = var_choices)
+  })
+  
+  # Update variable choices for spatial analysis
+  observe({
+    var_choices <- switch(input$spatial_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "spatial_var_type", choices = var_choices)
+  })
+  
+  # Update variable choices for heatmap
+  observe({
+    var_choices <- switch(input$heatmap_dataset_type,
+                          "temperature" = c(
+                            "Mean Temperature" = "Mean Temperature",
+                            "Maximum Temperature" = "Maximum Temperature",
+                            "Minimum Temperature" = "Minimum Temperature"
+                          ),
+                          "rainfall" = c(
+                            "Total Rainfall" = "Total Rainfall",
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
+                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
+                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                          ),
+                          "windspeed" = c(
+                            "Mean Wind Speed" = "Mean Wind Speed",
+                            "Max Wind Speed" = "Max Wind Speed"
+                          )
+    )
+    updateSelectInput(session, "heatmap_var_type", choices = var_choices)
+  })
+  
+  # Render station map
+  output$station_map <- renderPlotly({
+    req(input$map_dataset_type,
+        input$map_var_type,
+        input$map_date)
     
     tryCatch({
-      create_model_diagnostics(
-        dataset_type = input$diag_dataset_type,
-        selected_station = input$diag_station,
-        selected_var = input$diag_var_type,
-        selected_model = input$diag_model,
-        training_start = input$diag_date_range[1],
-        training_end = input$diag_date_range[2]
+      create_station_map(
+        dataset_type = input$map_dataset_type,
+        selected_var = input$map_var_type,
+        selected_date = input$map_date
       )
     }, error = function(e) {
-      ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = paste("Error:", e$message),
-                 size = 5) +
-        theme_void() +
-        xlim(0, 1) + ylim(0, 1)
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
     })
   })
   
-  # Add observers for the forecast comparison link clicks
-  observeEvent(input$show_forecast_plot_link, {
-    shinyjs::show("forecast_plot_container")
-    shinyjs::hide("forecast_metrics_container")
-    shinyjs::runjs("
-      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
-      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
-    ")
+  # Render spatial pattern plot
+  output$spatial_pattern_plot <- renderPlotly({
+    req(input$spatial_dataset_type,
+        input$spatial_var_type,
+        input$spatial_date_range)
+    
+    tryCatch({
+      create_spatial_pattern(
+        dataset_type = input$spatial_dataset_type,
+        selected_var = input$spatial_var_type,
+        date_range = input$spatial_date_range
+      )
+    }, error = function(e) {
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
+    })
   })
   
-  observeEvent(input$show_forecast_metrics_link, {
-    shinyjs::hide("forecast_plot_container")
-    shinyjs::show("forecast_metrics_container")
-    shinyjs::runjs("
-      document.getElementById('show_forecast_plot_link').style.fontWeight = 'normal';
-      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'bold';
-    ")
-  })
-  
-  # Initialize the forecast comparison view (show plot by default)
-  observe({
-    req(input$forecast_tabs == "Forecast Model Comparison")
-    shinyjs::show("forecast_plot_container")
-    shinyjs::hide("forecast_metrics_container")
-    shinyjs::runjs("
-      document.getElementById('show_forecast_plot_link').style.fontWeight = 'bold';
-      document.getElementById('show_forecast_metrics_link').style.fontWeight = 'normal';
-    ")
+  # Render spatial heatmap
+  output$spatial_heatmap <- renderPlotly({
+    req(input$heatmap_dataset_type,
+        input$heatmap_var_type,
+        input$heatmap_aggregation,
+        input$heatmap_date_range)
+    
+    tryCatch({
+      create_spatial_heatmap(
+        dataset_type = input$heatmap_dataset_type,
+        selected_var = input$heatmap_var_type,
+        aggregation = input$heatmap_aggregation,
+        date_range = input$heatmap_date_range
+      )
+    }, error = function(e) {
+      plot_ly() %>%
+        add_annotations(
+          text = paste("Error:", e$message),
+          showarrow = FALSE,
+          font = list(size = 14)
+        )
+    })
   })
 }
 
