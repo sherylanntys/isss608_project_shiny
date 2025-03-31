@@ -17,6 +17,7 @@ library(forecast)
 library(stats)
 library(urca)
 library(tidyr)
+library(ggrepel)
 
 
 # Load datasets
@@ -28,6 +29,140 @@ climate_windspeed_interpolated <- read_csv("data/climate_windspeed_interpolated.
 climate_temperature_interpolated$date <- as.Date(climate_temperature_interpolated$date)
 climate_rainfall_interpolated$date <- as.Date(climate_rainfall_interpolated$date)
 climate_windspeed_interpolated$date <- as.Date(climate_windspeed_interpolated$date)
+
+
+#Create overview plot function
+create_overview_plot <- function() {
+  # Calculate monthly means for temperature and wind speed
+  temp_data <- climate_temperature_interpolated %>%
+    mutate(date = as.Date(date)) %>%
+    group_by(yearmonth = floor_date(date, "month")) %>%
+    summarise(
+      mean_temp = mean(`Mean Temperature (°C)`, na.rm = TRUE)
+    )
+  
+  wind_data <- climate_windspeed_interpolated %>%
+    mutate(date = as.Date(date)) %>%
+    group_by(yearmonth = floor_date(date, "month")) %>%
+    summarise(
+      mean_wind = mean(`Mean Wind Speed (km/h)`, na.rm = TRUE)
+    )
+  
+  # Calculate monthly total rainfall first, then average across stations
+  rain_data <- climate_rainfall_interpolated %>%
+    mutate(date = as.Date(date)) %>%
+    group_by(yearmonth = floor_date(date, "month"), Station) %>%
+    summarise(
+      monthly_total = sum(`Daily Rainfall Total (mm)`, na.rm = TRUE),
+      .groups = 'drop'
+    ) %>%
+    group_by(yearmonth) %>%
+    summarise(
+      mean_rain = mean(monthly_total, na.rm = TRUE)
+    )
+  
+  # Find max and min points and print them for debugging
+  temp_max <- temp_data %>% slice_max(mean_temp, n = 1)
+  temp_min <- temp_data %>% slice_min(mean_temp, n = 1)
+
+  rain_max <- rain_data %>% slice_max(mean_rain, n = 1)
+  rain_min <- rain_data %>% slice_min(mean_rain, n = 1)
+  
+  wind_max <- wind_data %>% slice_max(mean_wind, n = 1)
+  wind_min <- wind_data %>% slice_min(mean_wind, n = 1)
+  
+  # Create the three plots
+  p1 <- ggplot(temp_data, aes(x = yearmonth, y = mean_temp)) +
+    geom_line(color = "#FF6B6B", size = 1) +
+    geom_smooth(method = "lm", color = "#FF9999", se = FALSE, linetype = "dashed") +
+    geom_point(data = bind_rows(temp_max, temp_min), 
+               aes(x = yearmonth, y = mean_temp),
+               color = "#FF6B6B", size = 3) +
+    geom_text_repel(
+      data = bind_rows(temp_max, temp_min),
+      aes(label = sprintf("%.1f°C", mean_temp)),
+      color = "#FF6B6B",
+      fontface = "bold",
+      box.padding = 0.5,
+      point.padding = 0.5,
+      nudge_x =50,
+      force = 2
+    ) +
+    labs(title = "Mean Temperature",
+         y = "Temperature (°C)") +
+    theme_minimal() +
+    theme(
+      axis.title.x = element_blank(),
+      plot.title = element_text(hjust = 0.5, size = 12),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    ) +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+  
+  p2 <- ggplot(rain_data, aes(x = yearmonth, y = mean_rain)) +
+    geom_line(color = "#4ECDC4", size = 1) +
+    geom_smooth(method = "lm", color = "#7FDFD9", se = FALSE, linetype = "dashed") +
+    geom_point(data = bind_rows(rain_max, rain_min), 
+               aes(x = yearmonth, y = mean_rain),
+               color = "#4ECDC4", size = 3) +
+    geom_text_repel(
+      data = bind_rows(rain_max, rain_min),
+      aes(label = sprintf("%.1fmm", mean_rain)),
+      color = "#4ECDC4",
+      fontface = "bold",
+      box.padding = 0.5,
+      point.padding = 0.5,
+      nudge_x =50,
+      force = 2
+    ) +
+    labs(title = "Mean Rainfall",
+         y = "Rainfall (mm)") +
+    theme_minimal() +
+    theme(
+      axis.title.x = element_blank(),
+      plot.title = element_text(hjust = 0.5, size = 12),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    ) +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+  
+  p3 <- ggplot(wind_data, aes(x = yearmonth, y = mean_wind)) +
+    geom_line(color = "#95A5A6", size = 1) +
+    geom_smooth(method = "lm", color = "#BDC3C7", se = FALSE, linetype = "dashed") +
+    geom_point(data = bind_rows(wind_max, wind_min), 
+               aes(x = yearmonth, y = mean_wind),
+               color = "#95A5A6", size = 3) +
+    geom_text_repel(
+      data = bind_rows(wind_max, wind_min),
+      aes(label = sprintf("%.1fkm/h", mean_wind)),
+      color = "#95A5A6",
+      fontface = "bold",
+      box.padding = 0.5,
+      point.padding = 0.5,
+      nudge_x =50,
+      force = 2
+    ) +
+    labs(title = "Mean Wind Speed",
+         y = "Wind Speed (km/h)") +
+    theme_minimal() +
+    theme(
+      axis.title.x = element_blank(),
+      plot.title = element_text(hjust = 0.5, size = 12),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    ) +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+  
+  # Combine the plots
+  combined_plot <- gridExtra::grid.arrange(
+    p1, p2, p3,
+    ncol = 1,
+    heights = c(1, 1, 1)
+  )
+  
+  return(combined_plot)
+}
+
 
 # Create line chart function
 create_line_chart <- function(data, selected_stations, dataset_type, var_type, date_range) {
@@ -1205,8 +1340,10 @@ ui <- navbarPage(
                 # Right containers
                 column(6,
                        # Top right container
-                       div(class = "coming-soon-container",
-                           "Coming Soon"
+                       div(class = "overview-container",
+                           style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-height: calc((100vh - 80px) / 2); padding: 25px; margin-bottom: 20px;",
+                           h4("Overview of Climate Variables (2020-2024)", style = "text-align: center; margin-bottom: 20px;"),
+                           plotOutput("overview_plot", height = "calc(100% - 40px)")
                        ),
                        # Bottom right container
                        div(class = "coming-soon-container",
@@ -1773,6 +1910,12 @@ server <- function(input, output, session) {
         xlim(0, 1) + ylim(0, 1)
     })
   })
+  
+
+  # Overview plot output
+  output$overview_plot <- renderPlot({
+    create_overview_plot()
+  }, height = 600)
   
   
   # Update variable choices for diagnostics
