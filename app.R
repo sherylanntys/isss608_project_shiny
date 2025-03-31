@@ -1055,6 +1055,100 @@ ui <- navbarPage(
         .checkbox label:hover {
             background-color: #f8f8f8;
         }
+        
+        .home-page {
+            background-image: url('background.jpg');
+            background-attachment: fixed;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            width: 100vw;              /* Full viewport width */
+            margin-left: -15px;        /* Remove default padding */
+            margin-right: -15px;       /* Remove default padding */
+            margin-top: -20px;         /* Remove gap below navbar */
+            overflow-x: hidden;        /* Prevent horizontal scroll */
+        }
+
+        /* Adjust the content wrapper */
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+            padding: 20px;
+            min-height: 100vh;         /* Ensure full height */
+        }
+
+        /* Add this to ensure navbar stays on top */
+        .navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
+        }
+        
+        .welcome-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: 100%;
+            padding: 25px;
+        }
+        /* Adjust the container heights */
+        .coming-soon-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: calc((100vh - 80px) / 2);  /* Adjust height to fill space */
+            padding: 25px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #666;
+        }
+        
+        /* Adjust the fluid page container */
+        .container-fluid {
+            padding-left: 0;
+            padding-right: 0;
+            width: 100%;
+        }
+        
+        .feature-box {
+            display: flex;
+            align-items: center;
+            background: linear-gradient(135deg, #f6f9fc 0%, #edf2f7 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .feature-box:hover {
+            transform: translateY(-5px);
+        }
+        .feature-icon {
+            flex: 0 0 80px;
+            text-align: center;
+            margin-right: 20px;
+        }
+        .feature-content {
+            flex: 1;
+        }
+        .feature-title {
+            color: #2c5282;
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .feature-text {
+            color: #4a5568;
+            line-height: 1.5;
+        }
     "))
   ),
   
@@ -1064,14 +1158,69 @@ ui <- navbarPage(
         tags$img(src = "house.png", height = "15px", style = "margin-right: 5px;"),
         "Home"
     ),
-    fluidPage(
-      div(
-        class = "welcome-container",
-        style = "padding: 20px;",
-        h1("Welcome to Weather Pulse"),
-        p("Explore Singapore's climate data through interactive visualizations and forecasting tools.")
-      )
+    div(class = "home-page",
+        div(class = "content-wrapper",
+        fluidPage(
+          class="container-fluid",
+          div(style = "padding: 20px;",
+              fluidRow(
+                # Left container
+                column(6,
+                       div(class = "welcome-container",
+                           div(style = "text-align: center;",
+                               tags$img(src = "sun_header.png", height = "200px", style = "margin-bottom: 10px;")
+                           ),
+                           div(style = "text-align: center; margin-bottom: 30px;",
+                               h2("WELCOME TO", style = "margin-bottom: 0;"),
+                               h1("WEATHER PULSE", style = "margin-top: 0; color: #337ab7;")
+                           ),
+                           p(style = "text-align: justify; line-height: 1.6;",
+                             "Singapore's climate has been experiencing rising temperatures and increasing weather extremes driven by climate change and urbanisation. In 2024, Singapore experienced one of its hottest years on record, with temperatures exceeding long-term averages. These climate trends pose significant risks, including heat stress, water resource management challenges and urban planning concerns.",
+                             br(), br(),
+                             "Existing reports and tools offer real-time weather forecasts and historical comparisons using long-term averages. However, they lack interactive analysis tools that would allow for a deeper exploration of historical trends, spatial patterns and future projections.",
+                             br(), br(),
+                             "Weather Pulse was developed to address these gaps. It is an R Shiny Application that has the following key features:"
+                           ),
+                           # First feature box
+                           div(class = "feature-box",
+                               div(class = "feature-icon",
+                                   tags$img(src = "clock.png", height = "50px")
+                               ),
+                               div(class = "feature-content",
+                                   div(class = "feature-title", "Time-Series Analysis"),
+                                   div(class = "feature-text", 
+                                       "Explore historical trends, seasonal patterns, and forecast future values using advanced time series modeling techniques. Compare different stations and analyze various climate variables through interactive visualizations.")
+                               )
+                           ),
+                           # Second feature box
+                           div(class = "feature-box",
+                               div(class = "feature-icon",
+                                   tags$img(src = "google-maps.png", height = "50px")
+                               ),
+                               div(class = "feature-content",
+                                   div(class = "feature-title", "Geospatial Analysis"),
+                                   div(class = "feature-text", 
+                                       "Visualize spatial patterns and relationships across different weather stations in Singapore. Analyze geographical distributions of temperature, rainfall, and wind speed through interactive maps and spatial analytics.")
+                               )
+                           )
+                       )
+                ),
+                # Right containers
+                column(6,
+                       # Top right container
+                       div(class = "coming-soon-container",
+                           "Coming Soon"
+                       ),
+                       # Bottom right container
+                       div(class = "coming-soon-container",
+                           "Coming Soon"
+                       )
+                )
+              )
+          )
+        )
     )
+  )
   ),
   
   # Time Series Analysis Menu
