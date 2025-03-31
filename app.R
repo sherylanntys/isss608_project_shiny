@@ -818,7 +818,7 @@ create_forecast <- function(dataset_type,
       full_width = TRUE,
       position = "center",
       font_size = 14
-    )  # Removed the problematic column_spec
+    ) 
   
   
   # Modify the return statement at the end of the function
@@ -873,7 +873,7 @@ create_station_comparison <- function(dataset_type,
   training_end_date <- as.Date(training_end)
   holdout_end_date <- as.Date(holdout_end)
   
-  horizon <- ceiling(as.numeric(difftime(holdout_end_date, training_end_date, units = "days") / 30))
+  horizon <- length(seq(from = training_end_date, to = holdout_end_date, by = "month")) - 1
   
   ts_data <- data %>%
     filter(Station %in% selected_stations,
@@ -983,10 +983,44 @@ create_station_comparison <- function(dataset_type,
       full_width = FALSE
     )
   
-  # Return both plot and table
+  forecast_table <- forecasts %>%
+    as_tibble() %>%
+    group_by(Station) %>%
+    mutate(
+      # Only include rows up to the horizon
+      `Forecast Period` = row_number()
+    ) %>%
+    ungroup() %>%
+    # Filter to ensure we only show periods up to our horizon
+    filter(`Forecast Period` <= horizon) %>%
+    mutate(
+      Value = round(.mean, 2)
+    ) %>%
+    select(`Forecast Period`, Station, Value) %>%
+    tidyr::pivot_wider(
+      names_from = Station,
+      values_from = Value,
+      id_cols = `Forecast Period`
+    ) %>%
+    kable(
+      caption = paste("Forecast Values for", selected_var,
+                      "\nForecast Period:", format(training_end_date + months(1), "%b %Y"),
+                      "to", format(holdout_end_date, "%b %Y")),
+      format = "html",
+      digits = 2,
+      align = "c"
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = TRUE,
+      position = "center",
+      font_size = 14
+    )
+  # Modify the return statement to include the forecast table
   return(list(
     plot = interactive_plot,
-    table = accuracy_table
+    table = accuracy_table,
+    forecast_table = forecast_table
   ))
 }
 
@@ -1282,7 +1316,7 @@ ui <- navbarPage(
                             )
                    ),
                    tabPanel("Station Forecast Comparison",
-                            # Add links for switching views
+                            # Links div
                             div(
                               style = "margin-bottom: 15px;",
                               actionLink(
@@ -1293,19 +1327,30 @@ ui <- navbarPage(
                               actionLink(
                                 "show_metrics_link",
                                 "Show Accuracy Metrics",
+                                style = "margin-right: 15px; color: #337ab7; text-decoration: underline;"
+                              ),
+                              actionLink(
+                                "show_station_forecast_link",
+                                "Show Forecast Results",
                                 style = "color: #337ab7; text-decoration: underline;"
                               )
                             ),
-                            # Container for plot
+                            # Plot container
                             div(
                               id = "comparison_plot_container",
                               plotlyOutput("comparison_plot")
                             ),
-                            # Container for metrics table
+                            # Metrics container
                             div(
                               id = "comparison_metrics_container",
                               style = "display: none;",  # Initially hidden
                               htmlOutput("comparison_table")
+                            ),
+                            # Forecast results container
+                            div(
+                              id = "station_forecast_container",
+                              style = "display: none;",  # Initially hidden
+                              htmlOutput("station_forecast_table")
                             )
                    )
                  ),
@@ -1443,9 +1488,7 @@ server <- function(input, output, session) {
                           ),
                           "rainfall" = c(
                             "Total Rainfall" = "Total Rainfall",
-                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
-                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
-                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
+                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall"
                           ),
                           "windspeed" = c(
                             "Mean Wind Speed" = "Mean Wind Speed",
@@ -1835,6 +1878,15 @@ server <- function(input, output, session) {
     )
   })
   
+  # Render station forecast table
+  output$station_forecast_table <- renderUI({
+    req(comparison_results())
+    div(
+      style = "width: 100%; margin: auto;",
+      HTML(comparison_results()$forecast_table)
+    )
+  })
+  
   # Add observers for the forecast comparison link clicks
   observeEvent(input$show_forecast_plot_link, {
     shinyjs::show("forecast_plot_container")
@@ -1886,29 +1938,49 @@ server <- function(input, output, session) {
   observeEvent(input$show_plot_link, {
     shinyjs::show("comparison_plot_container")
     shinyjs::hide("comparison_metrics_container")
+    shinyjs::hide("station_forecast_container")  # Make sure this is hidden
     shinyjs::runjs("
       document.getElementById('show_plot_link').style.fontWeight = 'bold';
       document.getElementById('show_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_station_forecast_link').style.fontWeight = 'normal';
     ")
   })
   
+  # Observer for metrics link
   observeEvent(input$show_metrics_link, {
     shinyjs::hide("comparison_plot_container")
     shinyjs::show("comparison_metrics_container")
+    shinyjs::hide("station_forecast_container")  # Make sure this is hidden
     shinyjs::runjs("
       document.getElementById('show_plot_link').style.fontWeight = 'normal';
       document.getElementById('show_metrics_link').style.fontWeight = 'bold';
+      document.getElementById('show_station_forecast_link').style.fontWeight = 'normal';
     ")
   })
   
-  # Initialize the station comparison view (show plot by default)
+  # Observer for forecast results link
+  observeEvent(input$show_station_forecast_link, {
+    shinyjs::hide("comparison_plot_container")
+    shinyjs::hide("comparison_metrics_container")
+    shinyjs::show("station_forecast_container")
+    shinyjs::runjs("
+      document.getElementById('show_plot_link').style.fontWeight = 'normal';
+      document.getElementById('show_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_station_forecast_link').style.fontWeight = 'bold';
+    ")
+  })
+  
+  # Initialize the view (when the tab is loaded)
   observe({
     req(input$forecast_tabs == "Station Forecast Comparison")
+    # Show plot by default, hide others
     shinyjs::show("comparison_plot_container")
     shinyjs::hide("comparison_metrics_container")
+    shinyjs::hide("station_forecast_container")
     shinyjs::runjs("
       document.getElementById('show_plot_link').style.fontWeight = 'bold';
       document.getElementById('show_metrics_link').style.fontWeight = 'normal';
+      document.getElementById('show_station_forecast_link').style.fontWeight = 'normal';
     ")
   })
   
