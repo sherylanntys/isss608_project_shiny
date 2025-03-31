@@ -1334,7 +1334,120 @@ ui <- navbarPage(
                                    div(class = "feature-text", 
                                        "Visualize spatial patterns and relationships across different weather stations in Singapore. Analyze geographical distributions of temperature, rainfall, and wind speed through interactive maps and spatial analytics.")
                                )
+                           ),
+                           
+                           div(style = "margin-top: 30px;",
+                               h4("Dataset Information", style = "text-align: center; margin-bottom: 20px;"),
+                               div(style = "display: flex; justify-content: space-between; gap: 20px;",
+                                   # First note box
+                                   div(style = "
+                                      flex: 1;
+                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
+                                      border-radius: 10px;
+                                      padding: 20px;
+                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                      border-left: 4px solid #3498DB;
+                                      ",
+                                       div(style = "
+                                        font-size: 14px;
+                                        color: #444;
+                                        line-height: 1.5;
+                                        ",
+                                           "Official Climate Data from",
+                                           tags$br(),
+                                           tags$span(
+                                             "Meteorological Services Singapore",
+                                             style = "font-weight: bold; color: #2874A6; font-size: 16px;"
+                                           ),
+                                           tags$br(),
+                                           tags$a(
+                                             href = "https://www.weather.gov.sg/climate-historical-daily/",
+                                             "Access Source →",
+                                             style = "color: #3498DB; font-size: 12px; margin-top: 5px; display: inline-block;"
+                                           )
+                                       )
+                                   ),
+                                   
+                                   # Second note box
+                                   div(style = "
+                                      flex: 1;
+                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
+                                      border-radius: 10px;
+                                      padding: 20px;
+                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                      border-left: 4px solid #3498DB;
+                                      ",
+                                       div(style = "
+                                        font-size: 14px;
+                                        color: #444;
+                                        line-height: 1.5;
+                                        ",
+                                           "Coverage of",
+                                           tags$br(),
+                                           tags$span(
+                                             "44", 
+                                             style = "font-size: 24px; font-weight: bold; color: #2874A6;"
+                                           ),
+                                           " Weather Stations",
+                                           tags$br(),
+                                           tags$span(
+                                             "80,388", 
+                                             style = "font-size: 24px; font-weight: bold; color: #2874A6;"
+                                           ),
+                                           " Observations",
+                                           tags$br(),
+                                           tags$span(
+                                             "From 2020 to 2024",
+                                             style = "font-size: 12px; color: #5499C7; font-style: italic;"
+                                           )
+                                       )
+                                   ),
+                                   
+                                   # Third note box
+                                   div(style = "
+                                      flex: 1;
+                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
+                                      border-radius: 10px;
+                                      padding: 20px;
+                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                      border-left: 4px solid #3498DB;
+                                      ",
+                                       div(style = "
+                                        font-size: 14px;
+                                        color: #444;
+                                        line-height: 1.5;
+                                        ",
+                                           "Key Weather Variables:",
+                                           tags$br(),
+                                           tags$div(style = "margin-top: 5px;",
+                                                    tags$span(
+                                                      "Temperature",
+                                                      style = "color: #2874A6; font-weight: bold;"
+                                                    ),
+                                                    " • ",
+                                                    tags$span(
+                                                      "Rainfall",
+                                                      style = "color: #2874A6; font-weight: bold;"
+                                                    ),
+                                                    " • ",
+                                                    tags$span(
+                                                      "Wind Speed",
+                                                      style = "color: #2874A6; font-weight: bold;"
+                                                    )
+                                           ),
+                                           tags$div(style = "
+                                            font-size: 12px;
+                                            color: #5499C7;
+                                            margin-top: 8px;
+                                            font-style: italic;
+                                            ",
+                                                    "Daily measurements available"
+                                           )
+                                       )
+                                   )
+                               )
                            )
+                           
                        )
                 ),
                 # Right containers
@@ -1347,8 +1460,187 @@ ui <- navbarPage(
                        ),
                        # Bottom right container
                        div(class = "coming-soon-container",
-                           "Coming Soon"
+                           style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 25px; margin-bottom: 20px; display: flex; flex-direction: column;",
+                           # Title at the top
+                           h4("Weather Highlights", 
+                              style = "text-align: center; margin-bottom: 20px;"),
+                           # Grid container for boxes
+                           div(style = "display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;",
+                               # First highlight box (Highest Temperature)
+                               div(style = "
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 100%;
+            ",
+                                   # Top half with icon and value
+                                   div(style = "
+                padding: 15px;
+                text-align: center;
+                border-bottom: 1px solid rgba(229, 62, 62, 0.2);
+                background-color: white;
+                ",
+                                       tags$img(src = "hot.png", height = "40px", 
+                                                style = "margin-bottom: 10px;"),
+                                       div(
+                                         textOutput("highest_temp"),
+                                         style = "
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #E53E3E;
+                    margin-bottom: 5px;
+                    "
+                                       ),
+                                       div(
+                                         "Highest Temperature Recorded",
+                                         style = "
+                    font-size: 12px;
+                    color: #666;
+                    "
+                                       )
+                                   ),
+                                   # Bottom half with details - now with solid background
+                                   div(style = "
+                padding: 15px;
+                text-align: center;
+                font-size: 12px;
+                background-color: #FFF5F5;
+                ",
+                                       uiOutput("highest_temp_details")
+                                   )
+                               ),
+                               # Placeholder boxes for other highlights
+                               div(style = "
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    width: 100%;
+    ",
+                                   # Top half with icon and value
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        border-bottom: 1px solid rgba(229, 62, 62, 0.2);
+        background-color: white;
+        ",
+                                       tags$img(src = "fever.png", height = "40px", 
+                                                style = "margin-bottom: 10px;"),
+                                       div(
+                                         textOutput("temp_growth"),
+                                         style = "
+            font-size: 24px;
+            font-weight: bold;
+            color: #E53E3E;
+            margin-bottom: 5px;
+            "
+                                       ),
+                                       div(
+                                         "Mean Temperature Growth",
+                                         style = "
+            font-size: 12px;
+            color: #666;
+            "
+                                       )
+                                   ),
+                                   # Bottom half with details
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        font-size: 12px;
+        background-color: #FFF5F5;
+        ",
+                                       uiOutput("temp_growth_details")
+                                   )
+                               ),
+                               div(style = "
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    width: 100%;
+    ",
+                                   # Top half with icon and month
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        border-bottom: 1px solid rgba(66, 153, 225, 0.2);
+        background-color: white;
+        ",
+                                       tags$img(src = "water.png", height = "40px", 
+                                                style = "margin-bottom: 10px;"),
+                                       div(
+                                         textOutput("wettest_month_value"),
+                                         style = "
+            font-size: 24px;
+            font-weight: bold;
+            color: #2B6CB0;
+            margin-bottom: 5px;
+            "
+                                       ),
+                                       div(
+                                         "Wettest Month on Record",
+                                         style = "
+            font-size: 12px;
+            color: #666;
+            "
+                                       )
+                                   ),
+                                   # Bottom half with rainfall details
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        font-size: 12px;
+        background-color: #EBF8FF;
+        ",
+                                       uiOutput("wettest_month_details")
+                                   )
+                               ),
+                               div(style = "
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    width: 100%;
+    ",
+                                   # Top half with icon and month
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        border-bottom: 1px solid rgba(66, 153, 225, 0.2);
+        background-color: white;
+        ",
+                                       tags$img(src = "weather.png", height = "40px", 
+                                                style = "margin-bottom: 10px;"),
+                                       div(
+                                         textOutput("driest_month_value"),
+                                         style = "
+            font-size: 24px;
+            font-weight: bold;
+            color: #2B6CB0;
+            margin-bottom: 5px;
+            "
+                                       ),
+                                       div(
+                                         "Driest Month on Record",
+                                         style = "
+            font-size: 12px;
+            color: #666;
+            "
+                                       )
+                                   ),
+                                   # Bottom half with rainfall details
+                                   div(style = "
+        padding: 15px;
+        text-align: center;
+        font-size: 12px;
+        background-color: #EBF8FF;
+        ",
+                                       uiOutput("driest_month_details")
+                                   )
+                               )
+                           )
                        )
+                       
+                       
+                       
                 )
               )
           )
@@ -1760,6 +2052,147 @@ server <- function(input, output, session) {
            "rainfall" = climate_rainfall_interpolated,
            "windspeed" = climate_windspeed_interpolated)
   })
+  
+  # Calculate highest temperature
+  highest_temp_data <- reactive({
+    climate_temperature_interpolated %>%
+      arrange(desc(`Maximum Temperature (°C)`)) %>%
+      slice(1) %>%
+      select(Station, date, `Maximum Temperature (°C)`)
+  })
+  
+  # Render highest temperature value
+  output$highest_temp <- renderText({
+    temp_data <- highest_temp_data()
+    paste0(round(temp_data$`Maximum Temperature (°C)`, 1), "°C")
+  })
+  
+  # Render highest temperature details
+  output$highest_temp_details <- renderUI({
+    temp_data <- highest_temp_data()
+    tagList(
+      div(temp_data$Station,
+          style = "margin-bottom: 5px; color: #C53030;"), # Darker red for better readability
+      div(format(temp_data$date, "%d %b %Y"),
+          style = "color: #E53E3E;")
+    )
+  })
+  
+  # Calculate temperature growth
+  temp_growth_data <- reactive({
+    climate_temperature_interpolated %>%
+      mutate(year = year(date)) %>%
+      group_by(year) %>%
+      summarise(mean_temp = mean(`Mean Temperature (°C)`, na.rm = TRUE)) %>%
+      filter(year %in% c(2020, 2024)) %>%
+      summarise(
+        start_temp = first(mean_temp),
+        end_temp = last(mean_temp),
+        growth_pct = ((end_temp - start_temp) / start_temp) * 100
+      )
+  })
+  
+  # Render temperature growth value
+  output$temp_growth <- renderText({
+    growth_data <- temp_growth_data()
+    sprintf("%.1f%%", growth_data$growth_pct)
+  })
+  
+  # Render temperature growth details
+  output$temp_growth_details <- renderUI({
+    growth_data <- temp_growth_data()
+    tagList(
+      div(
+        sprintf("%.1f°C → %.1f°C", growth_data$start_temp, growth_data$end_temp),
+        style = "margin-bottom: 5px; color: #C53030;"
+      ),
+      div(
+        "2020 to 2024",
+        style = "color: #E53E3E;"
+      )
+    )
+  })
+  
+  # Calculate wettest month data
+  wettest_month_data <- reactive({
+    climate_rainfall_interpolated %>%
+      mutate(
+        year_month = floor_date(date, "month"),
+        month_name = format(date, "%B %Y")  # Changed from %b to %B for full month name
+      ) %>%
+      group_by(year_month, month_name) %>%
+      summarise(
+        total_rainfall = sum(`Daily Rainfall Total (mm)`, na.rm = TRUE),
+        .groups = 'drop'
+      ) %>%
+      arrange(desc(total_rainfall)) %>%
+      slice(1)
+  })
+  
+  # Render wettest month value
+  output$wettest_month_value <- renderText({
+    rain_data <- wettest_month_data()
+    rain_data$month_name
+  })
+  
+  # Render wettest month details (now shows rainfall with comma)
+  output$wettest_month_details <- renderUI({
+    rain_data <- wettest_month_data()
+    tagList(
+      div(
+        "Total Rainfall",
+        style = "margin-bottom: 5px; color: #2B6CB0;"
+      ),
+      div(
+        format(round(rain_data$total_rainfall, 1), big.mark = ",", scientific = FALSE),
+        style = "color: #4299E1; font-size: 18px; font-weight: bold;"
+      ),
+      div(
+        "millimeters",
+        style = "color: #4299E1; font-size: 12px; margin-top: 2px;"
+      )
+    )
+  })
+  
+  driest_month_data <- reactive({
+    climate_rainfall_interpolated %>%
+      mutate(
+        year_month = floor_date(date, "month"),
+        month_name = format(date, "%B %Y")
+      ) %>%
+      group_by(year_month, month_name) %>%
+      summarise(
+        total_rainfall = sum(`Daily Rainfall Total (mm)`, na.rm = TRUE),
+        .groups = 'drop'
+      ) %>%
+      arrange(total_rainfall) %>%  # Changed from desc to get the minimum
+      slice(1)
+  })
+  
+  # Add the output renderers
+  output$driest_month_value <- renderText({
+    rain_data <- driest_month_data()
+    rain_data$month_name
+  })
+  
+  output$driest_month_details <- renderUI({
+    rain_data <- driest_month_data()
+    tagList(
+      div(
+        "Total Rainfall",
+        style = "margin-bottom: 5px; color: #2B6CB0;"
+      ),
+      div(
+        format(round(rain_data$total_rainfall, 1), big.mark = ",", scientific = FALSE),
+        style = "color: #4299E1; font-size: 18px; font-weight: bold;"
+      ),
+      div(
+        "millimeters",
+        style = "color: #4299E1; font-size: 12px; margin-top: 2px;"
+      )
+    )
+  })
+  
   
   # Update variable choices for EDA
   observe({
