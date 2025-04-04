@@ -18,12 +18,20 @@ library(stats)
 library(urca)
 library(tidyr)
 library(ggrepel)
+library(sf)
+library(tmap)
+library(tmaptools)
+library(leaflet)
+library(units)  
 
 
 # Load datasets
 climate_temperature_interpolated <- read_csv("data/climate_temperature_interpolated.csv")
 climate_rainfall_interpolated <- read_csv("data/climate_rainfall_interpolated.csv")
 climate_windspeed_interpolated <- read_csv("data/climate_windspeed_interpolated.csv")
+climate_rainfall_geospatial <- readRDS("data/climate_rainfall3414.rds")
+climate_temperature_geospatial <- readRDS("data/climate_temperature3414.rds")
+climate_windspeed_geospatial <- readRDS("data/climate_windspeed3414.rds")
 
 # Convert date columns
 climate_temperature_interpolated$date <- as.Date(climate_temperature_interpolated$date)
@@ -64,7 +72,7 @@ create_overview_plot <- function() {
   # Find max and min points and print them for debugging
   temp_max <- temp_data %>% slice_max(mean_temp, n = 1)
   temp_min <- temp_data %>% slice_min(mean_temp, n = 1)
-
+  
   rain_max <- rain_data %>% slice_max(mean_rain, n = 1)
   rain_min <- rain_data %>% slice_min(mean_rain, n = 1)
   
@@ -1160,9 +1168,185 @@ create_station_comparison <- function(dataset_type,
 }
 
 
+# Bubble Plot - Rainfall
+plot_rainfall_map <- function(data, selected_year, selected_month) {
+  # Aggregate rainfall data by Station, Year, and Month
+  aggregated_data <- data %>%
+    mutate(
+      Year = year(date), 
+      Month = month(date, label = TRUE, abbr = FALSE)
+    ) %>%
+    group_by(Station, Year, Month) %>%
+    summarise(
+      Total_Rainfall = sum(`Daily Rainfall Total (mm)`, na.rm = TRUE),
+      geometry = first(geometry),
+      .groups = "drop"
+    )
+  
+  # Filter data
+  filtered_data <- aggregated_data %>%
+    filter(Year == selected_year, 
+           as.character(Month) == as.character(selected_month))
+  
+  # Handle empty data case
+  if (nrow(filtered_data) == 0) {
+    return(tm_shape() + 
+             tm_title("No data available for the selected year and month."))
+  }
+  
+  # Set interactive map mode
+  tmap_mode("view")
+  
+  # Create map
+  map <- tm_shape(filtered_data) +
+    tm_bubbles(
+      size = "Total_Rainfall",
+      fill = "Total_Rainfall",
+      fill.scale = tm_scale(values = "brewer.blues"),
+      size.scale = tm_scale_continuous(ticks = c(50, 100, 150, 200)),
+      col = "black",
+      col_alpha = 0.5,
+      popup.vars = c("Station", "Total_Rainfall")
+    ) +
+    tm_title(text = paste("Total Rainfall for", selected_month, selected_year)) +
+    tm_layout(
+      legend.outside = TRUE,
+      legend.outside.position = "right"
+    ) +
+    tm_view(set_zoom_limits = c(11, 14))
+  
+  return(map)
+}
 
 
-# UI
+# Bubble Map - Temperature
+plot_temperature_map <- function(data, selected_year, selected_month) {
+  # Aggregate temperature data by Station, Year, and Month
+  aggregated_data <- data %>%
+    mutate(
+      Year = year(date), 
+      Month = month(date, label = TRUE, abbr = FALSE)
+    ) %>%
+    group_by(Station, Year, Month) %>%
+    summarise(
+      Mean_Temperature = mean(`Mean Temperature (°C)`, na.rm = TRUE),
+      geometry = first(geometry),
+      .groups = "drop"
+    )
+  
+  # Filter data
+  filtered_data <- aggregated_data %>%
+    filter(Year == selected_year, 
+           as.character(Month) == as.character(selected_month))
+  
+  # Handle empty data case
+  if (nrow(filtered_data) == 0) {
+    return(tm_shape() + 
+             tm_title("No data available for the selected year and month."))
+  }
+  
+  # Set interactive map mode
+  tmap_mode("view")
+  
+  # Create map
+  map <- tm_shape(filtered_data) +
+    tm_bubbles(
+      size = "Mean_Temperature",
+      fill = "Mean_Temperature",
+      fill.scale = tm_scale(values = "brewer.reds"),
+      size.scale = tm_scale_continuous(ticks = c(25, 27, 29, 31)),
+      col = "black",
+      col_alpha = 0.5,
+      popup.vars = c("Station", "Mean_Temperature")
+    ) +
+    tm_title(text = paste("Mean Temperature for", selected_month, selected_year)) +
+    tm_layout(
+      legend.outside = TRUE,
+      legend.outside.position = "right"
+    ) +
+    tm_view(set_zoom_limits = c(11, 14))
+  
+  return(map)
+}
+
+
+# Bubble Plot - Wind Speed
+plot_windspeed_map <- function(data, selected_year, selected_month) {
+  # Aggregate wind speed data by Station, Year, and Month
+  aggregated_data <- data %>%
+    mutate(
+      Year = year(date), 
+      Month = month(date, label = TRUE, abbr = FALSE)
+    ) %>%
+    group_by(Station, Year, Month) %>%
+    summarise(
+      Mean_Wind_Speed = mean(`Mean Wind Speed (km/h)`, na.rm = TRUE),
+      geometry = first(geometry),
+      .groups = "drop"
+    )
+  
+  # Filter data
+  filtered_data <- aggregated_data %>%
+    filter(Year == selected_year, 
+           as.character(Month) == as.character(selected_month))
+  
+  # Handle empty data case
+  if (nrow(filtered_data) == 0) {
+    return(tm_shape() + 
+             tm_title("No data available for the selected year and month."))
+  }
+  
+  # Set interactive map mode
+  tmap_mode("view")
+  
+  # Create map
+  map <- tm_shape(filtered_data) +
+    tm_bubbles(
+      size = "Mean_Wind_Speed",
+      fill = "Mean_Wind_Speed",
+      fill.scale = tm_scale(values = "brewer.greens"),
+      size.scale = tm_scale_continuous(ticks = c(5, 10, 15, 20)),
+      col = "black",
+      col_alpha = 0.5,
+      popup.vars = c("Station", "Mean_Wind_Speed")
+    ) +
+    tm_title(text = paste("Mean Wind Speed for", selected_month, selected_year)) +
+    tm_layout(
+      legend.outside = TRUE,
+      legend.outside.position = "right"
+    ) +
+    tm_view(set_zoom_limits = c(11, 14))
+  
+  return(map)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # UI
 ui <- navbarPage(
   title = div(
@@ -1292,119 +1476,55 @@ ui <- navbarPage(
     ),
     div(class = "home-page",
         div(class = "content-wrapper",
-        fluidPage(
-          class="container-fluid",
-          div(style = "padding: 20px;",
-              fluidRow(
-                # Left container
-                column(6,
-                       div(class = "welcome-container",
-                           div(style = "text-align: center;",
-                               tags$img(src = "sun_header.png", height = "200px", style = "margin-bottom: 10px;")
-                           ),
-                           div(style = "text-align: center; margin-bottom: 30px;",
-                               h2("WELCOME TO", style = "margin-bottom: 0;"),
-                               h1("WEATHER PULSE", style = "margin-top: 0; color: #337ab7;")
-                           ),
-                           p(style = "text-align: justify; line-height: 1.6;",
-                             "Singapore's climate has been experiencing rising temperatures and increasing weather extremes driven by climate change and urbanisation. In 2024, Singapore experienced one of its hottest years on record, with temperatures exceeding long-term averages. These climate trends pose significant risks, including heat stress, water resource management challenges and urban planning concerns.",
-                             br(), br(),
-                             "Existing reports and tools offer real-time weather forecasts and historical comparisons using long-term averages. However, they lack interactive analysis tools that would allow for a deeper exploration of historical trends, spatial patterns and future projections.",
-                             br(), br(),
-                             "Weather Pulse was developed to address these gaps. It is an R Shiny Application that has the following key features:"
-                           ),
-                           # First feature box
-                           div(class = "feature-box",
-                               div(class = "feature-icon",
-                                   tags$img(src = "clock.png", height = "50px")
+            fluidPage(
+              class="container-fluid",
+              div(style = "padding: 20px;",
+                  fluidRow(
+                    # Left container
+                    column(6,
+                           div(class = "welcome-container",
+                               div(style = "text-align: center;",
+                                   tags$img(src = "sun_header.png", height = "200px", style = "margin-bottom: 10px;")
                                ),
-                               div(class = "feature-content",
-                                   div(class = "feature-title", "Time-Series Analysis"),
-                                   div(class = "feature-text", 
-                                       "Explore historical trends, seasonal patterns, and forecast future values using advanced time series modeling techniques. Compare different stations and analyze various climate variables through interactive visualizations.")
-                               )
-                           ),
-                           # Second feature box
-                           div(class = "feature-box",
-                               div(class = "feature-icon",
-                                   tags$img(src = "google-maps.png", height = "50px")
+                               div(style = "text-align: center; margin-bottom: 30px;",
+                                   h2("WELCOME TO", style = "margin-bottom: 0;"),
+                                   h1("WEATHER PULSE", style = "margin-top: 0; color: #337ab7;")
                                ),
-                               div(class = "feature-content",
-                                   div(class = "feature-title", "Geospatial Analysis"),
-                                   div(class = "feature-text", 
-                                       "Visualize spatial patterns and relationships across different weather stations in Singapore. Analyze geographical distributions of temperature, rainfall, and wind speed through interactive maps and spatial analytics.")
-                               )
-                           ),
-                           
-                           div(style = "margin-top: 30px;",
-                               h4("Dataset Information", style = "text-align: center; margin-bottom: 20px;"),
-                               div(style = "display: flex; justify-content: space-between; gap: 20px;",
-                                   # First note box
-                                   div(style = "
-                                      flex: 1;
-                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
-                                      border-radius: 10px;
-                                      padding: 20px;
-                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                                      border-left: 4px solid #3498DB;
-                                      ",
-                                       div(style = "
-                                        font-size: 14px;
-                                        color: #444;
-                                        line-height: 1.5;
-                                        ",
-                                           "Official Climate Data from",
-                                           tags$br(),
-                                           tags$span(
-                                             "Meteorological Services Singapore",
-                                             style = "font-weight: bold; color: #2874A6; font-size: 16px;"
-                                           ),
-                                           tags$br(),
-                                           tags$a(
-                                             href = "https://www.weather.gov.sg/climate-historical-daily/",
-                                             "Access Source →",
-                                             style = "color: #3498DB; font-size: 12px; margin-top: 5px; display: inline-block;"
-                                           )
-                                       )
+                               p(style = "text-align: justify; line-height: 1.6;",
+                                 "Singapore's climate has been experiencing rising temperatures and increasing weather extremes driven by climate change and urbanisation. In 2024, Singapore experienced one of its hottest years on record, with temperatures exceeding long-term averages. These climate trends pose significant risks, including heat stress, water resource management challenges and urban planning concerns.",
+                                 br(), br(),
+                                 "Existing reports and tools offer real-time weather forecasts and historical comparisons using long-term averages. However, they lack interactive analysis tools that would allow for a deeper exploration of historical trends, spatial patterns and future projections.",
+                                 br(), br(),
+                                 "Weather Pulse was developed to address these gaps. It is an R Shiny Application that has the following key features:"
+                               ),
+                               # First feature box
+                               div(class = "feature-box",
+                                   div(class = "feature-icon",
+                                       tags$img(src = "clock.png", height = "50px")
                                    ),
-                                   
-                                   # Second note box
-                                   div(style = "
-                                      flex: 1;
-                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
-                                      border-radius: 10px;
-                                      padding: 20px;
-                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                                      border-left: 4px solid #3498DB;
-                                      ",
-                                       div(style = "
-                                        font-size: 14px;
-                                        color: #444;
-                                        line-height: 1.5;
-                                        ",
-                                           "Coverage of",
-                                           tags$br(),
-                                           tags$span(
-                                             "44", 
-                                             style = "font-size: 24px; font-weight: bold; color: #2874A6;"
-                                           ),
-                                           " Weather Stations",
-                                           tags$br(),
-                                           tags$span(
-                                             "80,388", 
-                                             style = "font-size: 24px; font-weight: bold; color: #2874A6;"
-                                           ),
-                                           " Observations",
-                                           tags$br(),
-                                           tags$span(
-                                             "From 2020 to 2024",
-                                             style = "font-size: 12px; color: #5499C7; font-style: italic;"
-                                           )
-                                       )
+                                   div(class = "feature-content",
+                                       div(class = "feature-title", "Time-Series Analysis"),
+                                       div(class = "feature-text", 
+                                           "Explore historical trends, seasonal patterns, and forecast future values using advanced time series modeling techniques. Compare different stations and analyze various climate variables through interactive visualizations.")
+                                   )
+                               ),
+                               # Second feature box
+                               div(class = "feature-box",
+                                   div(class = "feature-icon",
+                                       tags$img(src = "google-maps.png", height = "50px")
                                    ),
-                                   
-                                   # Third note box
-                                   div(style = "
+                                   div(class = "feature-content",
+                                       div(class = "feature-title", "Geospatial Analysis"),
+                                       div(class = "feature-text", 
+                                           "Visualize spatial patterns and relationships across different weather stations in Singapore. Analyze geographical distributions of temperature, rainfall, and wind speed through interactive maps and spatial analytics.")
+                                   )
+                               ),
+                               
+                               div(style = "margin-top: 30px;",
+                                   h4("Dataset Information", style = "text-align: center; margin-bottom: 20px;"),
+                                   div(style = "display: flex; justify-content: space-between; gap: 20px;",
+                                       # First note box
+                                       div(style = "
                                       flex: 1;
                                       background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
                                       border-radius: 10px;
@@ -1412,241 +1532,305 @@ ui <- navbarPage(
                                       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                                       border-left: 4px solid #3498DB;
                                       ",
-                                       div(style = "
+                                           div(style = "
                                         font-size: 14px;
                                         color: #444;
                                         line-height: 1.5;
                                         ",
-                                           "Key Weather Variables:",
-                                           tags$br(),
-                                           tags$div(style = "margin-top: 5px;",
-                                                    tags$span(
-                                                      "Temperature",
-                                                      style = "color: #2874A6; font-weight: bold;"
-                                                    ),
-                                                    " • ",
-                                                    tags$span(
-                                                      "Rainfall",
-                                                      style = "color: #2874A6; font-weight: bold;"
-                                                    ),
-                                                    " • ",
-                                                    tags$span(
-                                                      "Wind Speed",
-                                                      style = "color: #2874A6; font-weight: bold;"
-                                                    )
-                                           ),
-                                           tags$div(style = "
+                                               "Official Climate Data from",
+                                               tags$br(),
+                                               tags$span(
+                                                 "Meteorological Services Singapore",
+                                                 style = "font-weight: bold; color: #2874A6; font-size: 16px;"
+                                               ),
+                                               tags$br(),
+                                               tags$a(
+                                                 href = "https://www.weather.gov.sg/climate-historical-daily/",
+                                                 "Access Source →",
+                                                 style = "color: #3498DB; font-size: 12px; margin-top: 5px; display: inline-block;"
+                                               )
+                                           )
+                                       ),
+                                       
+                                       # Second note box
+                                       div(style = "
+                                      flex: 1;
+                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
+                                      border-radius: 10px;
+                                      padding: 20px;
+                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                      border-left: 4px solid #3498DB;
+                                      ",
+                                           div(style = "
+                                        font-size: 14px;
+                                        color: #444;
+                                        line-height: 1.5;
+                                        ",
+                                               "Coverage of",
+                                               tags$br(),
+                                               tags$span(
+                                                 "44", 
+                                                 style = "font-size: 24px; font-weight: bold; color: #2874A6;"
+                                               ),
+                                               " Weather Stations",
+                                               tags$br(),
+                                               tags$span(
+                                                 "80,388", 
+                                                 style = "font-size: 24px; font-weight: bold; color: #2874A6;"
+                                               ),
+                                               " Observations",
+                                               tags$br(),
+                                               tags$span(
+                                                 "From 2020 to 2024",
+                                                 style = "font-size: 12px; color: #5499C7; font-style: italic;"
+                                               )
+                                           )
+                                       ),
+                                       
+                                       # Third note box
+                                       div(style = "
+                                      flex: 1;
+                                      background: linear-gradient(135deg, #EBF5FB 0%, #D6EAF8 100%);
+                                      border-radius: 10px;
+                                      padding: 20px;
+                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                      border-left: 4px solid #3498DB;
+                                      ",
+                                           div(style = "
+                                        font-size: 14px;
+                                        color: #444;
+                                        line-height: 1.5;
+                                        ",
+                                               "Key Weather Variables:",
+                                               tags$br(),
+                                               tags$div(style = "margin-top: 5px;",
+                                                        tags$span(
+                                                          "Temperature",
+                                                          style = "color: #2874A6; font-weight: bold;"
+                                                        ),
+                                                        " • ",
+                                                        tags$span(
+                                                          "Rainfall",
+                                                          style = "color: #2874A6; font-weight: bold;"
+                                                        ),
+                                                        " • ",
+                                                        tags$span(
+                                                          "Wind Speed",
+                                                          style = "color: #2874A6; font-weight: bold;"
+                                                        )
+                                               ),
+                                               tags$div(style = "
                                             font-size: 12px;
                                             color: #5499C7;
                                             margin-top: 8px;
                                             font-style: italic;
                                             ",
-                                                    "Daily measurements available"
+                                                        "Daily measurements available"
+                                               )
                                            )
                                        )
                                    )
                                )
+                               
                            )
-                           
-                       )
-                ),
-                # Right containers
-                column(6,
-                       # Top right container
-                       div(class = "overview-container",
-                           style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-height: calc((100vh - 80px) / 2); padding: 25px; margin-bottom: 20px;",
-                           h4("Overview of Climate Variables (2020-2024)", style = "text-align: center; margin-bottom: 20px;"),
-                           plotOutput("overview_plot", height = "calc(100% - 40px)")
-                       ),
-                       # Bottom right container
-                       div(class = "coming-soon-container",
-                           style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 25px; margin-bottom: 20px; display: flex; flex-direction: column;",
-                           # Title at the top
-                           h4("Weather Highlights", 
-                              style = "text-align: center; margin-bottom: 20px;"),
-                           # Grid container for boxes
-                           div(style = "display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;",
-                               # First highlight box (Highest Temperature)
-                               div(style = "
+                    ),
+                    # Right containers
+                    column(6,
+                           # Top right container
+                           div(class = "overview-container",
+                               style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-height: calc((100vh - 80px) / 2); padding: 25px; margin-bottom: 20px;",
+                               h4("Overview of Climate Variables (2020-2024)", style = "text-align: center; margin-bottom: 20px;"),
+                               plotOutput("overview_plot", height = "calc(100% - 40px)")
+                           ),
+                           # Bottom right container
+                           div(class = "coming-soon-container",
+                               style = "background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 25px; margin-bottom: 20px; display: flex; flex-direction: column;",
+                               # Title at the top
+                               h4("Weather Highlights", 
+                                  style = "text-align: center; margin-bottom: 20px;"),
+                               # Grid container for boxes
+                               div(style = "display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;",
+                                   # First highlight box (Highest Temperature)
+                                   div(style = "
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             overflow: hidden;
             width: 100%;
             ",
-                                   # Top half with icon and value
-                                   div(style = "
+                                       # Top half with icon and value
+                                       div(style = "
                 padding: 15px;
                 text-align: center;
                 border-bottom: 1px solid rgba(229, 62, 62, 0.2);
                 background-color: white;
                 ",
-                                       tags$img(src = "hot.png", height = "40px", 
-                                                style = "margin-bottom: 10px;"),
-                                       div(
-                                         textOutput("highest_temp"),
-                                         style = "
+                                           tags$img(src = "hot.png", height = "40px", 
+                                                    style = "margin-bottom: 10px;"),
+                                           div(
+                                             textOutput("highest_temp"),
+                                             style = "
                     font-size: 24px;
                     font-weight: bold;
                     color: #E53E3E;
                     margin-bottom: 5px;
                     "
-                                       ),
-                                       div(
-                                         "Highest Temperature Recorded",
-                                         style = "
+                                           ),
+                                           div(
+                                             "Highest Temperature Recorded",
+                                             style = "
                     font-size: 12px;
                     color: #666;
                     "
-                                       )
-                                   ),
-                                   # Bottom half with details - now with solid background
-                                   div(style = "
+                                           )
+                                       ),
+                                       # Bottom half with details - now with solid background
+                                       div(style = "
                 padding: 15px;
                 text-align: center;
                 font-size: 12px;
                 background-color: #FFF5F5;
                 ",
-                                       uiOutput("highest_temp_details")
-                                   )
-                               ),
-                               # Placeholder boxes for other highlights
-                               div(style = "
+                                           uiOutput("highest_temp_details")
+                                       )
+                                   ),
+                                   # Placeholder boxes for other highlights
+                                   div(style = "
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     overflow: hidden;
     width: 100%;
     ",
-                                   # Top half with icon and value
-                                   div(style = "
+                                       # Top half with icon and value
+                                       div(style = "
         padding: 15px;
         text-align: center;
         border-bottom: 1px solid rgba(229, 62, 62, 0.2);
         background-color: white;
         ",
-                                       tags$img(src = "fever.png", height = "40px", 
-                                                style = "margin-bottom: 10px;"),
-                                       div(
-                                         textOutput("temp_growth"),
-                                         style = "
+                                           tags$img(src = "fever.png", height = "40px", 
+                                                    style = "margin-bottom: 10px;"),
+                                           div(
+                                             textOutput("temp_growth"),
+                                             style = "
             font-size: 24px;
             font-weight: bold;
             color: #E53E3E;
             margin-bottom: 5px;
             "
-                                       ),
-                                       div(
-                                         "Mean Temperature Growth",
-                                         style = "
+                                           ),
+                                           div(
+                                             "Mean Temperature Growth",
+                                             style = "
             font-size: 12px;
             color: #666;
             "
-                                       )
-                                   ),
-                                   # Bottom half with details
-                                   div(style = "
+                                           )
+                                       ),
+                                       # Bottom half with details
+                                       div(style = "
         padding: 15px;
         text-align: center;
         font-size: 12px;
         background-color: #FFF5F5;
         ",
-                                       uiOutput("temp_growth_details")
-                                   )
-                               ),
-                               div(style = "
+                                           uiOutput("temp_growth_details")
+                                       )
+                                   ),
+                                   div(style = "
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     overflow: hidden;
     width: 100%;
     ",
-                                   # Top half with icon and month
-                                   div(style = "
+                                       # Top half with icon and month
+                                       div(style = "
         padding: 15px;
         text-align: center;
         border-bottom: 1px solid rgba(66, 153, 225, 0.2);
         background-color: white;
         ",
-                                       tags$img(src = "water.png", height = "40px", 
-                                                style = "margin-bottom: 10px;"),
-                                       div(
-                                         textOutput("wettest_month_value"),
-                                         style = "
+                                           tags$img(src = "water.png", height = "40px", 
+                                                    style = "margin-bottom: 10px;"),
+                                           div(
+                                             textOutput("wettest_month_value"),
+                                             style = "
             font-size: 24px;
             font-weight: bold;
             color: #2B6CB0;
             margin-bottom: 5px;
             "
-                                       ),
-                                       div(
-                                         "Wettest Month on Record",
-                                         style = "
+                                           ),
+                                           div(
+                                             "Wettest Month on Record",
+                                             style = "
             font-size: 12px;
             color: #666;
             "
-                                       )
-                                   ),
-                                   # Bottom half with rainfall details
-                                   div(style = "
+                                           )
+                                       ),
+                                       # Bottom half with rainfall details
+                                       div(style = "
         padding: 15px;
         text-align: center;
         font-size: 12px;
         background-color: #EBF8FF;
         ",
-                                       uiOutput("wettest_month_details")
-                                   )
-                               ),
-                               div(style = "
+                                           uiOutput("wettest_month_details")
+                                       )
+                                   ),
+                                   div(style = "
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     overflow: hidden;
     width: 100%;
     ",
-                                   # Top half with icon and month
-                                   div(style = "
+                                       # Top half with icon and month
+                                       div(style = "
         padding: 15px;
         text-align: center;
         border-bottom: 1px solid rgba(66, 153, 225, 0.2);
         background-color: white;
         ",
-                                       tags$img(src = "weather.png", height = "40px", 
-                                                style = "margin-bottom: 10px;"),
-                                       div(
-                                         textOutput("driest_month_value"),
-                                         style = "
+                                           tags$img(src = "weather.png", height = "40px", 
+                                                    style = "margin-bottom: 10px;"),
+                                           div(
+                                             textOutput("driest_month_value"),
+                                             style = "
             font-size: 24px;
             font-weight: bold;
             color: #2B6CB0;
             margin-bottom: 5px;
             "
-                                       ),
-                                       div(
-                                         "Driest Month on Record",
-                                         style = "
+                                           ),
+                                           div(
+                                             "Driest Month on Record",
+                                             style = "
             font-size: 12px;
             color: #666;
             "
-                                       )
-                                   ),
-                                   # Bottom half with rainfall details
-                                   div(style = "
+                                           )
+                                       ),
+                                       # Bottom half with rainfall details
+                                       div(style = "
         padding: 15px;
         text-align: center;
         font-size: 12px;
         background-color: #EBF8FF;
         ",
-                                       uiOutput("driest_month_details")
+                                           uiOutput("driest_month_details")
+                                       )
                                    )
                                )
                            )
-                       )
-                       
-                       
-                       
-                )
+                           
+                           
+                           
+                    )
+                  )
               )
-          )
+            )
         )
     )
-  )
   ),
   
   # Time Series Analysis Menu
@@ -1947,20 +2131,38 @@ ui <- navbarPage(
     tabPanel("Exploratory Data Analysis",
              sidebarLayout(
                sidebarPanel(
-                 selectInput("map_dataset_type", "Select Dataset:",
-                             choices = c("Temperature" = "temperature",
-                                         "Rainfall" = "rainfall",
-                                         "Wind Speed" = "windspeed")),
-                 selectInput("map_var_type", "Select Variable:",
-                             choices = NULL),
-                 dateInput("map_date", "Select Date:",
-                           value = Sys.Date(),
-                           min = "2020-01-01",
-                           max = "2024-12-31"),
+                 # Year selection
+                 selectInput("bubble_year", 
+                             "Select Year",
+                             choices = 2020:2024,
+                             selected = 2024),
+                 
+                 # Month selection
+                 selectInput("bubble_month",
+                             "Select Month",
+                             choices = month.name,
+                             selected = month.name[1]),
                  width = 3
                ),
                mainPanel(
-                 plotlyOutput("station_map", height = "600px"),
+                 tabsetPanel(
+                   id = "bubble_plot_tabs",
+                   
+                   # Rainfall Tab
+                   tabPanel("Bubble Plot - Rainfall",
+                            tmapOutput("rainfall_bubble_map", height = "600px")
+                   ),
+                   
+                   # Temperature Tab
+                   tabPanel("Bubble Plot - Temperature",
+                            tmapOutput("temperature_bubble_map", height = "600px")
+                   ),
+                   
+                   # Wind Speed Tab
+                   tabPanel("Bubble Plot - Wind Speed",
+                            tmapOutput("windspeed_bubble_map", height = "600px")
+                   )
+                 ),
                  width = 9
                )
              )
@@ -2344,7 +2546,7 @@ server <- function(input, output, session) {
     })
   })
   
-
+  
   # Overview plot output
   output$overview_plot <- renderPlot({
     create_overview_plot()
@@ -2439,7 +2641,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "forecast_var_type", choices = var_choices)
   })
   
-
+  
   
   # Update station choices for forecast comparison
   observe({
@@ -2706,139 +2908,68 @@ server <- function(input, output, session) {
     ")
   })
   
-  # Update variable choices for map
-  observe({
-    var_choices <- switch(input$map_dataset_type,
-                          "temperature" = c(
-                            "Mean Temperature" = "Mean Temperature",
-                            "Maximum Temperature" = "Maximum Temperature",
-                            "Minimum Temperature" = "Minimum Temperature"
-                          ),
-                          "rainfall" = c(
-                            "Total Rainfall" = "Total Rainfall",
-                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
-                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
-                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
-                          ),
-                          "windspeed" = c(
-                            "Mean Wind Speed" = "Mean Wind Speed",
-                            "Max Wind Speed" = "Max Wind Speed"
-                          )
-    )
-    updateSelectInput(session, "map_var_type", choices = var_choices)
-  })
-  
-  # Update variable choices for spatial analysis
-  observe({
-    var_choices <- switch(input$spatial_dataset_type,
-                          "temperature" = c(
-                            "Mean Temperature" = "Mean Temperature",
-                            "Maximum Temperature" = "Maximum Temperature",
-                            "Minimum Temperature" = "Minimum Temperature"
-                          ),
-                          "rainfall" = c(
-                            "Total Rainfall" = "Total Rainfall",
-                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
-                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
-                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
-                          ),
-                          "windspeed" = c(
-                            "Mean Wind Speed" = "Mean Wind Speed",
-                            "Max Wind Speed" = "Max Wind Speed"
-                          )
-    )
-    updateSelectInput(session, "spatial_var_type", choices = var_choices)
-  })
-  
-  # Update variable choices for heatmap
-  observe({
-    var_choices <- switch(input$heatmap_dataset_type,
-                          "temperature" = c(
-                            "Mean Temperature" = "Mean Temperature",
-                            "Maximum Temperature" = "Maximum Temperature",
-                            "Minimum Temperature" = "Minimum Temperature"
-                          ),
-                          "rainfall" = c(
-                            "Total Rainfall" = "Total Rainfall",
-                            "Highest 30 Min Rainfall" = "Highest 30 Min Rainfall",
-                            "Highest 60 Min Rainfall" = "Highest 60 Min Rainfall",
-                            "Highest 120 Min Rainfall" = "Highest 120 Min Rainfall"
-                          ),
-                          "windspeed" = c(
-                            "Mean Wind Speed" = "Mean Wind Speed",
-                            "Max Wind Speed" = "Max Wind Speed"
-                          )
-    )
-    updateSelectInput(session, "heatmap_var_type", choices = var_choices)
-  })
-  
-  # Render station map
-  output$station_map <- renderPlotly({
-    req(input$map_dataset_type,
-        input$map_var_type,
-        input$map_date)
+  # Render the bubble map
+  output$rainfall_bubble_map <- renderTmap({
+    req(input$bubble_year, input$bubble_month)
     
-    tryCatch({
-      create_station_map(
-        dataset_type = input$map_dataset_type,
-        selected_var = input$map_var_type,
-        selected_date = input$map_date
+    withProgress(message = 'Creating map...', {
+      plot_rainfall_map(
+        data = climate_rainfall_geospatial,
+        selected_year = input$bubble_year,
+        selected_month = input$bubble_month
       )
-    }, error = function(e) {
-      plot_ly() %>%
-        add_annotations(
-          text = paste("Error:", e$message),
-          showarrow = FALSE,
-          font = list(size = 14)
-        )
     })
   })
   
-  # Render spatial pattern plot
-  output$spatial_pattern_plot <- renderPlotly({
-    req(input$spatial_dataset_type,
-        input$spatial_var_type,
-        input$spatial_date_range)
+  # Update month choices based on available data
+  observe({
+    req(input$bubble_year)
+    available_months <- climate_rainfall_geospatial %>%
+      filter(year(date) == input$bubble_year) %>%
+      pull(date) %>%
+      month(label = TRUE, abbr = FALSE) %>%
+      unique()
     
-    tryCatch({
-      create_spatial_pattern(
-        dataset_type = input$spatial_dataset_type,
-        selected_var = input$spatial_var_type,
-        date_range = input$spatial_date_range
+    updateSelectInput(session, "bubble_month",
+                      choices = available_months,
+                      selected = available_months[1])
+  })
+  
+  # Update year choices based on available data
+  observe({
+    available_years <- unique(year(climate_rainfall_geospatial$date))
+    updateSelectInput(session, "bubble_year",
+                      choices = available_years,
+                      selected = max(available_years))
+  })
+  
+  # Render the temperature bubble map
+  output$temperature_bubble_map <- renderTmap({
+    req(input$bubble_year, input$bubble_month)
+    
+    withProgress(message = 'Creating map...', {
+      plot_temperature_map(
+        data = climate_temperature_geospatial,
+        selected_year = input$bubble_year,
+        selected_month = input$bubble_month
       )
-    }, error = function(e) {
-      plot_ly() %>%
-        add_annotations(
-          text = paste("Error:", e$message),
-          showarrow = FALSE,
-          font = list(size = 14)
-        )
     })
   })
   
-  # Render spatial heatmap
-  output$spatial_heatmap <- renderPlotly({
-    req(input$heatmap_dataset_type,
-        input$heatmap_var_type,
-        input$heatmap_aggregation,
-        input$heatmap_date_range)
+  # Render the wind speed bubble map
+  output$windspeed_bubble_map <- renderTmap({
+    req(input$bubble_year, input$bubble_month)
     
-    tryCatch({
-      create_spatial_heatmap(
-        dataset_type = input$heatmap_dataset_type,
-        selected_var = input$heatmap_var_type,
-        aggregation = input$heatmap_aggregation,
-        date_range = input$heatmap_date_range
+    withProgress(message = 'Creating map...', {
+      plot_windspeed_map(
+        data = climate_windspeed_geospatial,
+        selected_year = input$bubble_year,
+        selected_month = input$bubble_month
       )
-    }, error = function(e) {
-      plot_ly() %>%
-        add_annotations(
-          text = paste("Error:", e$message),
-          showarrow = FALSE,
-          font = list(size = 14)
-        )
     })
   })
+  
+
 }
 
 # Run the application 
