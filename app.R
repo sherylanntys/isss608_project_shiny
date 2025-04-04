@@ -1173,16 +1173,6 @@ create_station_comparison <- function(dataset_type,
 
 # Bubble Plot - Rainfall
 plot_rainfall_map <- function(data, selected_year, selected_month) {
-  # Ensure data is in the correct format and CRS
-  if (!inherits(data, "sf")) {
-    stop("Input data must be an sf object")
-  }
-  
-  # Ensure valid CRS
-  if (is.na(st_crs(data))) {
-    data <- st_set_crs(data, 3414)
-  }
-  
   # Aggregate rainfall data
   aggregated_data <- data %>%
     mutate(
@@ -1201,32 +1191,13 @@ plot_rainfall_map <- function(data, selected_year, selected_month) {
     filter(Year == selected_year, 
            as.character(Month) == as.character(selected_month))
   
-  # Handle empty data case
-  if (nrow(filtered_data) == 0) {
-    return(tm_shape(st_sf(geometry = st_sfc())) + 
-             tm_text("No data available"))
-  }
-  
-  # Remove any NA values
-  filtered_data <- filtered_data %>%
-    filter(!is.na(Total_Rainfall))
-  
-  # Set scale limits
-  max_rainfall <- max(filtered_data$Total_Rainfall, na.rm = TRUE)
-  
-  # Create map with tmap v4 syntax
+  # Create map
   tm_shape(filtered_data) +
     tm_bubbles(
       size = "Total_Rainfall",
       fill = "Total_Rainfall",
-      fill.scale = tm_scale_intervals(
-        values = "brewer.blues",
-        breaks = seq(0, max_rainfall, length.out = 5)
-      ),
+      fill.scale = tm_scale_continuous(values = "brewer.blues"),
       size.scale = tm_scale_continuous(values.scale = 2),
-      col = "black",
-      fill_alpha = 0.6,
-      col_alpha = 0.5,
       id = "Station",
       popup.vars = c(
         "Station" = "Station",
@@ -1234,15 +1205,13 @@ plot_rainfall_map <- function(data, selected_year, selected_month) {
       )
     ) +
     tm_title(text = paste("Total Rainfall for", selected_month, selected_year)) +
-    tm_layout(
-      legend.position = c("right", "bottom")
-    ) +
     tm_view(
       set_zoom_limits = c(11, 14),
       bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
                        ymin = 1.2, ymax = 1.5))
     )
 }
+
 
 # Bubble Plot - Temperature
 plot_temperature_map <- function(data, selected_year, selected_month) {
@@ -1264,33 +1233,13 @@ plot_temperature_map <- function(data, selected_year, selected_month) {
     filter(Year == selected_year, 
            as.character(Month) == as.character(selected_month))
   
-  # Handle empty data case
-  if (nrow(filtered_data) == 0) {
-    return(tm_shape(st_sf(geometry = st_sfc())) + 
-             tm_text("No data available"))
-  }
-  
-  # Remove any NA values
-  filtered_data <- filtered_data %>%
-    filter(!is.na(Mean_Temperature))
-  
-  # Set scale limits
-  max_temp <- max(filtered_data$Mean_Temperature, na.rm = TRUE)
-  min_temp <- min(filtered_data$Mean_Temperature, na.rm = TRUE)
-  
-  # Create map with tmap v4 syntax
+  # Create map
   tm_shape(filtered_data) +
     tm_bubbles(
       size = "Mean_Temperature",
       fill = "Mean_Temperature",
-      fill.scale = tm_scale_intervals(
-        values = "brewer.reds",
-        breaks = seq(min_temp, max_temp, length.out = 5)
-      ),
+      fill.scale = tm_scale_continuous(values = "brewer.reds"),
       size.scale = tm_scale_continuous(values.scale = 2),
-      col = "black",
-      fill_alpha = 0.6,
-      col_alpha = 0.5,
       id = "Station",
       popup.vars = c(
         "Station" = "Station",
@@ -1298,9 +1247,6 @@ plot_temperature_map <- function(data, selected_year, selected_month) {
       )
     ) +
     tm_title(text = paste("Mean Temperature for", selected_month, selected_year)) +
-    tm_layout(
-      legend.position = c("right", "bottom")
-    ) +
     tm_view(
       set_zoom_limits = c(11, 14),
       bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
@@ -1328,33 +1274,13 @@ plot_windspeed_map <- function(data, selected_year, selected_month) {
     filter(Year == selected_year, 
            as.character(Month) == as.character(selected_month))
   
-  # Handle empty data case
-  if (nrow(filtered_data) == 0) {
-    return(tm_shape(st_sf(geometry = st_sfc())) + 
-             tm_text("No data available"))
-  }
-  
-  # Remove any NA values
-  filtered_data <- filtered_data %>%
-    filter(!is.na(Mean_Wind_Speed))
-  
-  # Set scale limits
-  max_wind <- max(filtered_data$Mean_Wind_Speed, na.rm = TRUE)
-  min_wind <- min(filtered_data$Mean_Wind_Speed, na.rm = TRUE)
-  
-  # Create map with tmap v4 syntax
+  # Create map
   tm_shape(filtered_data) +
     tm_bubbles(
       size = "Mean_Wind_Speed",
       fill = "Mean_Wind_Speed",
-      fill.scale = tm_scale_intervals(
-        values = "brewer.greens",
-        breaks = seq(min_wind, max_wind, length.out = 5)
-      ),
+      fill.scale = tm_scale_continuous(values = "brewer.greens"),
       size.scale = tm_scale_continuous(values.scale = 2),
-      col = "black",
-      fill_alpha = 0.6,
-      col_alpha = 0.5,
       id = "Station",
       popup.vars = c(
         "Station" = "Station",
@@ -1362,15 +1288,13 @@ plot_windspeed_map <- function(data, selected_year, selected_month) {
       )
     ) +
     tm_title(text = paste("Mean Wind Speed for", selected_month, selected_year)) +
-    tm_layout(
-      legend.position = c("right", "bottom")
-    ) +
     tm_view(
       set_zoom_limits = c(11, 14),
       bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
                        ymin = 1.2, ymax = 1.5))
     )
 }
+
 
 
 
@@ -1403,31 +1327,7 @@ localmoran_i_rainfall <- function(data, year, month, k_neighbors = 2) {
   return(sf_data)
 }
 
-# Plot function with tmap v4 syntax
-plot_rainfall_morani <- function(data, year, month, k_neighbors = 2) {
-  tmap_mode("view")
-  
-  tm_shape(data) +
-    tm_symbols(
-      size = "Total_Rainfall",
-      fill = "Local_Moran_I",
-      size.scale = tm_scale_continuous(values.scale = 3),
-      fill.scale = tm_scale_intervals(
-        values = "brewer.blues",
-        n = 5,
-        style = "jenks"
-      ),
-      id = "Station",
-      popup.vars = c(
-        "Station" = "Station",
-        "Total Rainfall (mm)" = "Total_Rainfall",
-        "Local Moran's I" = "Local_Moran_I"
-      )
-    ) +
-    tm_title(text = paste("Local Indicators of Spatial Association for", month, year))
-}
-
-# Similar functions for temperature and wind speed
+# Local Moran's I function for temperature
 localmoran_i_temperature <- function(data, year, month, k_neighbors = 2) {
   data <- data %>%
     mutate(Year = year(date), Month = month(date, label = TRUE, abbr = FALSE)) %>%
@@ -1456,29 +1356,7 @@ localmoran_i_temperature <- function(data, year, month, k_neighbors = 2) {
   return(sf_data)
 }
 
-plot_temperature_morani <- function(data, year, month, k_neighbors = 2) {
-  tmap_mode("view")
-  
-  tm_shape(data) +
-    tm_symbols(
-      size = "Mean_Temperature",
-      fill = "Local_Moran_I",
-      size.scale = tm_scale_continuous(values.scale = 3),
-      fill.scale = tm_scale_intervals(
-        values = "brewer.reds",
-        n = 5,
-        style = "jenks"
-      ),
-      id = "Station",
-      popup.vars = c(
-        "Station" = "Station",
-        "Mean Temperature (°C)" = "Mean_Temperature",
-        "Local Moran's I" = "Local_Moran_I"
-      )
-    ) +
-    tm_title(text = paste("Local Indicators of Spatial Association for", month, year))
-}
-
+# Local Moran's I function for wind speed
 localmoran_i_windspeed <- function(data, year, month, k_neighbors = 2) {
   data <- data %>%
     mutate(Year = year(date), Month = month(date, label = TRUE, abbr = FALSE)) %>%
@@ -1507,17 +1385,78 @@ localmoran_i_windspeed <- function(data, year, month, k_neighbors = 2) {
   return(sf_data)
 }
 
+
+# Plot function for Rainfall Moran's I
+plot_rainfall_morani <- function(data, year, month, k_neighbors = 2) {
+  tmap_mode("view")
+  
+  rainfall_morani <- tm_shape(data) +
+    tm_symbols(
+      size = "Total_Rainfall", 
+      fill = "Local_Moran_I",
+      size.scale = tm_scale_continuous(values.scale = 3),
+      fill.scale = tm_scale_intervals(
+        values = "brewer.blues",
+        style = "jenks"
+      ),
+      id = "Station",
+      popup.vars = c(
+        "Station" = "Station",
+        "Total Rainfall (mm)" = "Total_Rainfall",
+        "Local Moran's I" = "Local_Moran_I"
+      )
+    ) +
+    tm_title(text = paste("Local Indicators of Spatial Association for", month, year)) +
+    tm_view(
+      set_zoom_limits = c(11, 14),
+      bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
+                       ymin = 1.2, ymax = 1.5))
+    )
+  
+  return(rainfall_morani)
+}
+
+# Plot function for Temperature Moran's I
+plot_temperature_morani <- function(data, year, month, k_neighbors = 2) {
+  tmap_mode("view")
+  
+  temperature_morani <- tm_shape(data) +
+    tm_symbols(
+      size = "Mean_Temperature", 
+      fill = "Local_Moran_I",
+      size.scale = tm_scale_continuous(values.scale = 3),
+      fill.scale = tm_scale_intervals(
+        values = "brewer.reds",
+        style = "jenks"
+      ),
+      id = "Station",
+      popup.vars = c(
+        "Station" = "Station",
+        "Mean Temperature (°C)" = "Mean_Temperature",
+        "Local Moran's I" = "Local_Moran_I"
+      )
+    ) +
+    tm_title(text = paste("Local Indicators of Spatial Association for", month, year)) +
+    tm_view(
+      set_zoom_limits = c(11, 14),
+      bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
+                       ymin = 1.2, ymax = 1.5))
+    )
+  
+  return(temperature_morani)
+}
+
+# Plot function for Wind Speed Moran's I
 plot_windspeed_morani <- function(data, year, month, k_neighbors = 2) {
   tmap_mode("view")
   
-  tm_shape(data) +
+  windspeed_morani <- tm_shape(data) +
     tm_symbols(
-      size = "Mean_Wind_Speed",
+      size = "Mean_Wind_Speed", 
       fill = "Local_Moran_I",
       size.scale = tm_scale_continuous(values.scale = 3),
       fill.scale = tm_scale_intervals(
         values = "brewer.greens",
-        n = 5,
         style = "jenks"
       ),
       id = "Station",
@@ -1527,10 +1466,15 @@ plot_windspeed_morani <- function(data, year, month, k_neighbors = 2) {
         "Local Moran's I" = "Local_Moran_I"
       )
     ) +
-    tm_title(text = paste("Local Indicators of Spatial Association for", month, year))
+    tm_title(text = paste("Local Indicators of Spatial Association for", month, year)) +
+    tm_view(
+      set_zoom_limits = c(11, 14),
+      bbox = st_bbox(c(xmin = 103.6, xmax = 104.1, 
+                       ymin = 1.2, ymax = 1.5))
+    )
+  
+  return(windspeed_morani)
 }
-
-
 
 
 
@@ -2388,10 +2332,11 @@ ui <- navbarPage(
                              choices = month.name,
                              selected = month.name[1]),
                  
+                 # In your UI code, update the sliderInput for k_neighbors:
                  sliderInput("k_neighbors",
                              "Number of Nearest Neighbors:",
-                             min = 2,
-                             max = 10,
+                             min = 1,
+                             max = 5,  # Reduced from 10 to 5
                              value = 2,
                              step = 1),
                  width = 3
