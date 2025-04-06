@@ -5,6 +5,6 @@ account: isss608-weatherpulse
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 14376099
-bundleId: 10063251
+bundleId:
 url: https://isss608-weatherpulse.shinyapps.io/home/
 version: 1

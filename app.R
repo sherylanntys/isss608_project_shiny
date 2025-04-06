@@ -25,6 +25,8 @@ library(leaflet)
 library(units)
 library(spdep)
 
+tmap_mode("view")
+
 # Load datasets
 climate_temperature_interpolated <- read_csv("data/climate_temperature_interpolated.csv")
 climate_rainfall_interpolated <- read_csv("data/climate_rainfall_interpolated.csv")
@@ -1998,12 +2000,12 @@ ui <- navbarPage(
     tabPanel("Exploratory Data Analysis",
              sidebarLayout(
                sidebarPanel(
-                 selectInput("dataset_type", "Select Dataset:",
+                 selectInput("dataset_type", "Select Variable:",
                              choices = c("Temperature" = "temperature",
                                          "Rainfall" = "rainfall",
                                          "Wind Speed" = "windspeed")),
                  
-                 selectInput("var_type", "Select Variable:",
+                 selectInput("var_type", "Select Metric:",
                              choices = NULL),
                  
                  # Controls for different visualizations
@@ -2083,12 +2085,12 @@ ui <- navbarPage(
                  # Model Diagnostics inputs
                  conditionalPanel(
                    condition = "input.forecast_tabs == 'Model Diagnostics'",
-                   selectInput("diag_dataset_type", "Select Dataset:",
+                   selectInput("diag_dataset_type", "Select Variable:",
                                choices = c("Temperature" = "temperature",
                                            "Rainfall" = "rainfall",
                                            "Wind Speed" = "windspeed")),
                    
-                   selectInput("diag_var_type", "Select Variable:",
+                   selectInput("diag_var_type", "Select Metric:",
                                choices = NULL),
                    
                    selectInput("diag_station", "Select Station:",
@@ -2112,12 +2114,12 @@ ui <- navbarPage(
                  # Forecast Model Comparison inputs
                  conditionalPanel(
                    condition = "input.forecast_tabs == 'Forecast Model Comparison'",
-                   selectInput("forecast_dataset_type", "Select Dataset:",
+                   selectInput("forecast_dataset_type", "Select Variable:",
                                choices = c("Temperature" = "temperature",
                                            "Rainfall" = "rainfall",
                                            "Wind Speed" = "windspeed")),
                    
-                   selectInput("forecast_var_type", "Select Variable:",
+                   selectInput("forecast_var_type", "Select Metric:",
                                choices = NULL),
                    
                    selectInput("forecast_station", "Select Station:",
@@ -2143,12 +2145,12 @@ ui <- navbarPage(
                  # Station Comparison inputs
                  conditionalPanel(
                    condition = "input.forecast_tabs == 'Station Forecast Comparison'",
-                   selectInput("compare_dataset_type", "Select Dataset:",
+                   selectInput("compare_dataset_type", "Select Variable:",
                                choices = c("Temperature" = "temperature",
                                            "Rainfall" = "rainfall",
                                            "Wind Speed" = "windspeed")),
                    
-                   selectInput("compare_var_type", "Select Variable:",
+                   selectInput("compare_var_type", "Select Metric:",
                                choices = NULL),
                    
                    selectInput("compare_model", "Select Model:",
@@ -2358,7 +2360,27 @@ ui <- navbarPage(
                  ),
                  width = 9
                )
-             ))
+             )),
+    
+    tabPanel(
+      "IDW Interpolation",
+      fluidPage(
+        tags$div(
+          style = "text-align: center; padding: 20px;",
+          tags$h3("IDW Interpolation Analysis"),
+          tags$p("Click the button below to access the IDW Interpolation tool:"),
+          tags$a(
+            href = "https://isss608weatherpulse.shinyapps.io/Geospatial_IDW/",
+            target = "_blank",
+            class = "btn btn-primary btn-lg",
+            style = "margin-top: 20px;",
+            "Open IDW Interpolation Tool"
+          )
+        )
+      )
+    )
+    
+    
   )
 )
 
