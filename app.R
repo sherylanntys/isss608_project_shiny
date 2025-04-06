@@ -33,6 +33,8 @@ climate_rainfall_geospatial <- readRDS("data/climate_rainfall3414.rds")
 climate_temperature_geospatial <- readRDS("data/climate_temperature3414.rds")
 climate_windspeed_geospatial <- readRDS("data/climate_windspeed3414.rds")
 
+# Initialize tmap settings
+tmap_mode("view")
 
 # Convert date columns
 climate_temperature_interpolated$date <- as.Date(climate_temperature_interpolated$date)
@@ -2393,7 +2395,7 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   
   # Initialize tmap settings at startup
-  tmap_mode("view")
+  # tmap_mode("view")
   
   # Ensure data is properly loaded with CRS
   climate_rainfall_sf <- reactive({

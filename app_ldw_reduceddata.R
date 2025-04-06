@@ -13,6 +13,7 @@ library(leaflet)
 library(sf)
 library(gstat)
 
+tmap_mode("view")
 
 # Load datasets
 climate_temperature_interpolated <- read_csv("data/climate_temperature_interpolated.csv")
@@ -965,7 +966,7 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   
   # Initialize tmap settings at startup
-  tmap_mode("view")
+  #tmap_mode("view")
   
   # Calculate highest temperature
   highest_temp_data <- reactive({
