@@ -874,7 +874,33 @@ ui <- navbarPage(
     )
   ),
   
-  
+  # Main Shiny App Menu 
+  navbarMenu(
+    HTML(paste0(
+      '<div style="display: inline-flex; align-items: center;">',
+      '<img src="analysis.png" height="15px" style="margin-right: 5px;">',
+      'Main Shiny App',
+      '</div>'
+    )),
+    
+    tabPanel(
+      "Main Shiny App",
+      fluidPage(
+        tags$div(
+          style = "text-align: center; padding: 20px;",
+          tags$h3("Main Shiny App"),
+          tags$p("Click the button below to access the main Shiny App tool:"),
+          tags$a(
+            href = "https://isss608-weatherpulse.shinyapps.io/home/",
+            target = "_blank",
+            class = "btn btn-primary btn-lg",
+            style = "margin-top: 20px;",
+            "Open main Shiny App tool"
+          )
+        )
+      )
+    )
+  ),  
   
   # Geospatial Analysis Menu
   navbarMenu(
@@ -929,10 +955,9 @@ ui <- navbarPage(
                  width = 9
                )
              )
-    )
+      )
+    )  
   )
-)
-
 
 
 
