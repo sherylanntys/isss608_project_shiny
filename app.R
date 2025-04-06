@@ -25,6 +25,8 @@ library(leaflet)
 library(units)
 library(spdep)
 
+tmap_mode("view")
+
 # Load datasets
 climate_temperature_interpolated <- read_csv("data/climate_temperature_interpolated.csv")
 climate_rainfall_interpolated <- read_csv("data/climate_rainfall_interpolated.csv")
@@ -2356,7 +2358,26 @@ ui <- navbarPage(
                  ),
                  width = 9
                )
-             ))
+             )),
+    
+    tabPanel(
+      "IDW Interpolation",
+      fluidPage(
+        tags$div(
+          style = "text-align: center; padding: 20px;",
+          tags$h3("IDW Interpolation Analysis"),
+          tags$p("Click the button below to access the IDW Interpolation tool:"),
+          tags$a(
+            href = "https://isss608weatherpulse.shinyapps.io/Geospatial_IDW/",
+            target = "_blank",
+            class = "btn btn-primary btn-lg",
+            style = "margin-top: 20px;",
+            "Open IDW Interpolation Tool"
+          )
+        )
+      )
+    )
+    
     
   )
 )
