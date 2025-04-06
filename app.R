@@ -2356,32 +2356,7 @@ ui <- navbarPage(
                  ),
                  width = 9
                )
-             )),
-    
-    tabPanel("Inverse Distance Weighted (IDW) Interpolation",
-             sidebarLayout(
-               sidebarPanel(
-                 selectInput("heatmap_dataset_type", "Select Dataset:",
-                             choices = c("Temperature" = "temperature",
-                                         "Rainfall" = "rainfall",
-                                         "Wind Speed" = "windspeed")),
-                 selectInput("heatmap_var_type", "Select Variable:",
-                             choices = NULL),
-                 selectInput("heatmap_aggregation", "Select Aggregation:",
-                             choices = c("Daily" = "daily",
-                                         "Weekly" = "weekly",
-                                         "Monthly" = "monthly")),
-                 dateRangeInput("heatmap_date_range", "Select Date Range:",
-                                start = "2020-01-01",
-                                end = "2024-12-31"),
-                 width = 3
-               ),
-               mainPanel(
-                 plotlyOutput("spatial_heatmap", height = "600px"),
-                 width = 9
-               )
-             )
-    )
+             ))
   )
 )
 
@@ -3226,7 +3201,7 @@ server <- function(input, output, session) {
     })
   })
   
-
+  
 }
 
 # Run the application 
